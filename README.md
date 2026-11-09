@@ -9,7 +9,9 @@ An Android app foundation for tracking mobile balance, active data plans, and re
 - Active SIM and multi-SIM discovery using Android's `SubscriptionManager`.
 - Phone permission requested only when the user taps **Find my SIMs**.
 - Permission denial, settings recovery, no SIM, and unsupported device states.
-- Local device access only; no server, analytics, or network permission.
+- Local device access only; no server, analytics, or network permission. The USSD adapter additionally requires user-granted CALL_PHONE permission.
+
+The domain models, asynchronous USSD adapter and verified Cubacel query catalog are now included. See [Android architecture](docs/ANDROID_ARCHITECTURE.md) and [Cubacel codes and sources](docs/CUBACEL_CODES.md). The dashboard does not yet invoke the query adapter.
 
 Live balances and carrier plan allowances are **not implemented**. Standard Android subscription APIs expose SIM metadata, not prepaid balances or remaining carrier allowances. Future work needs a supported carrier API or an explicitly authorized carrier-specific integration. No sample amounts are presented as real data.
 
