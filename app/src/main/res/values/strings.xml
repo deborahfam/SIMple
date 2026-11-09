@@ -1,0 +1,23 @@
+<resources>
+    <string name="app_name">SIMple</string>
+    <string name="tagline">Your mobile life, at a glance.</string>
+    <string name="overview">Overview</string>
+    <string name="intro">Keep your SIMs and mobile plans in one place.</string>
+    <string name="sims">Your SIM cards</string>
+    <string name="permission_intro">Allow phone access to find active SIM cards. SIMple only reads subscription details on this device.</string>
+    <string name="connect">Find my SIMs</string>
+    <string name="refresh">Refresh SIMs</string>
+    <string name="permission_denied">Phone access is off. You can try again or enable it in app settings.</string>
+    <string name="settings">Open app settings</string>
+    <string name="no_sims">No active SIM cards found. Insert or enable a SIM, then refresh.</string>
+    <string name="unsupported">SIM information is unavailable on this device.</string>
+    <string name="sim_slot">SIM %1$d · %2$s</string>
+    <string name="unknown_carrier">Unknown carrier</string>
+    <string name="balance">Mobile balance</string>
+    <string name="unavailable">Not connected</string>
+    <string name="balance_detail">Connect a supported carrier to see your balance.</string>
+    <string name="allowances">Data and allowances</string>
+    <string name="allowances_detail">Plan details will appear here when a carrier integration is available.</string>
+    <string name="about_title">A foundation for your connection</string>
+    <string name="about_detail">SIM detection is ready. Live balances and remaining data require a carrier service; they cannot be read directly from a SIM using standard Android APIs.</string>
+</resources>
