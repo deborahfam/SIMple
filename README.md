@@ -11,9 +11,9 @@ An Android app foundation for tracking mobile balance, active data plans, and re
 - Permission denial, settings recovery, no SIM, and unsupported device states.
 - Local device access only; no server, analytics, or network permission. The USSD adapter additionally requires user-granted CALL_PHONE permission.
 
-The domain models, asynchronous USSD adapter and verified Cubacel query catalog are now included. See [Android architecture](docs/ANDROID_ARCHITECTURE.md) and [Cubacel codes and sources](docs/CUBACEL_CODES.md). The dashboard does not yet invoke the query adapter.
+The domain models, asynchronous USSD adapter and verified Cubacel query catalog are now included. See [Android architecture](docs/ANDROID_ARCHITECTURE.md) and [Cubacel codes and sources](docs/CUBACEL_CODES.md). The dashboard now invokes the query adapter for the selected Cubacel SIM and displays the response on-device. Recharge and plan purchase actions open the dialer or official website for the user to complete. Multiple active SIMs have separate selectable cards. Manual balances/data/minutes are labelled and kept only for the current session; activity records exclude raw responses.
 
-Live balances and carrier plan allowances are **not implemented**. Standard Android subscription APIs expose SIM metadata, not prepaid balances or remaining carrier allowances. Future work needs a supported carrier API or an explicitly authorized carrier-specific integration. No sample amounts are presented as real data.
+Automatic Cubacel response extraction and encrypted history persistence are **not implemented**. USSD responses can be viewed directly, and confirmed values can be entered manually. Standard Android subscription APIs expose SIM metadata, not prepaid balances or remaining carrier allowances. Future work needs a supported carrier API or an explicitly authorized carrier-specific integration. No sample amounts are presented as real data.
 
 ## Run
 

@@ -22,8 +22,8 @@ checks domestic recharges received, remaining recharge capacity, and next eligib
 recharge date. Do not describe this as proof of an international top-up arriving.
 
 The catalog is usable by the asynchronous query adapter today. It does not automatically
-run all codes on launch or fall back to the other SIM. The UI must first select the
-Cubacel subscription. Do not auto-select solely from a carrier display name.
+run all codes on launch or fall back to the other SIM. The UI selects an active subscription and confirms each query. The dispatcher checks
+the SIM operator code (36801) before sending; other operators are rejected. Do not auto-select solely from a carrier display name.
 
 ## Additional discovered queries, not enabled
 
@@ -55,7 +55,8 @@ queries, or SMS capability checks are collected by this feature.
 
 Publishing a query code does not document its exact response grammar. The English
 `ExampleCarrierParser` is a synthetic example, not a Cubacel parser. Do not wire it to
-these commands in a production UI. Cubacel needs command-specific, redacted Spanish
+these commands in a production UI. The current dashboard displays the operator response
+in a transient protected dialog and supports explicitly labelled manual readings. Cubacel needs command-specific, redacted Spanish
 response fixtures before trustworthy extraction of amounts, bundles, dates and SMS
 counts. In particular, recharge-limit and SMS responses need result types beyond the
 current `BalanceSnapshot`; never force their numeric values into money or data fields.

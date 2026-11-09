@@ -21,7 +21,7 @@ import java.util.concurrent.Executor;
  * Caller selects a verified Cubacel query after explicit user confirmation.
  */
 public final class UssdDispatcher {
-    public enum Failure { PERMISSION, INACTIVE_SIM, UNSUPPORTED, BUSY, TIMEOUT, NETWORK, PARSE }
+    public enum Failure { PERMISSION, INACTIVE_SIM, UNSUPPORTED, BUSY, TIMEOUT, NETWORK, PARSE, WRONG_CARRIER }
     public static final class QueryException extends Exception {
         public final Failure failure;
         QueryException(Failure failure) { super(failure.name()); this.failure = failure; }
@@ -38,17 +38,29 @@ public final class UssdDispatcher {
 
     public CompletableFuture<BalanceSnapshot> query(UUID accountId, int subscriptionId,
             CubacelQuery query, CarrierResponseParser parser) {
-        CompletableFuture<BalanceSnapshot> result = new CompletableFuture<>();
-        if (query == null || parser == null || accountId == null) {
-            result.completeExceptionally(new IllegalArgumentException("Query, parser and account required"));
+        if (accountId == null || parser == null) {
+            CompletableFuture<BalanceSnapshot> invalid = new CompletableFuture<>();
+            invalid.completeExceptionally(new IllegalArgumentException("Account and parser required"));
+            return invalid;
+        }
+        return queryText(subscriptionId, query).thenApplyAsync(response -> {
+            try { return parser.parse(accountId, Instant.now(), response); }
+            catch (Exception ignored) { throw new java.util.concurrent.CompletionException(new QueryException(Failure.PARSE)); }
+        }, parserExecutor);
+    }
+
+    /** Ephemeral on-device response for display; caller must never persist or log it. */
+    public CompletableFuture<String> queryText(int subscriptionId, CubacelQuery query) {
+        CompletableFuture<String> result = new CompletableFuture<>();
+        if (query == null) {
+            result.completeExceptionally(new IllegalArgumentException("Query required"));
             return result;
         }
-        handler.post(() -> dispatch(accountId, subscriptionId, query.code(), parser, result));
+        handler.post(() -> dispatch(subscriptionId, query.code(), result));
         return result;
     }
 
-    private void dispatch(UUID accountId, int subscriptionId, String code,
-            CarrierResponseParser parser, CompletableFuture<BalanceSnapshot> result) {
+    private void dispatch(int subscriptionId, String code, CompletableFuture<String> result) {
         if (result.isDone()) return;
         if (busy) { fail(result, Failure.BUSY); return; }
         if (context.checkSelfPermission(Manifest.permission.CALL_PHONE) != PackageManager.PERMISSION_GRANTED
@@ -63,6 +75,9 @@ public final class UssdDispatcher {
             if (active == null || active.stream().noneMatch(s -> s.getSubscriptionId() == subscriptionId)) {
                 fail(result, Failure.INACTIVE_SIM); return;
             }
+            if (!"36801".equals(base.createForSubscriptionId(subscriptionId).getSimOperator())) {
+                fail(result, Failure.WRONG_CARRIER); return;
+            }
             busy = true;
             Runnable timeout = () -> fail(result, Failure.TIMEOUT);
             handler.postDelayed(timeout, 30_000);
@@ -75,14 +90,9 @@ public final class UssdDispatcher {
                             busy = false;
                             handler.removeCallbacks(timeout);
                             if (result.isDone()) return;
-                            Instant receivedAt = Instant.now();
-                            try {
-                                parserExecutor.execute(() -> {
-                                    if (result.isDone()) return;
-                                    try { result.complete(parser.parse(accountId, receivedAt, response)); }
-                                    catch (Exception ignored) { fail(result, Failure.PARSE); }
-                                });
-                            } catch (RuntimeException ignored) { fail(result, Failure.PARSE); }
+                            if (response == null || response.length() == 0 || response.length() > 4096) {
+                                fail(result, Failure.PARSE);
+                            } else result.complete(response.toString());
                         }
                         @Override public void onReceiveUssdResponseFailed(TelephonyManager manager,
                                 String request, int failureCode) {
