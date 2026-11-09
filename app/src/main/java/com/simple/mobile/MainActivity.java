@@ -7,6 +7,10 @@ import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
+import android.content.res.ColorStateList;
+import android.graphics.drawable.RippleDrawable;
+import android.view.Gravity;
+import android.widget.ImageView;
 import android.net.Uri;
 import android.os.Bundle;
 import android.provider.Settings;
@@ -21,8 +25,8 @@ import java.util.List;
 
 public final class MainActivity extends Activity {
     private static final int PHONE_PERMISSION = 100;
-    private static final int INK = 0xFF162F2A;
-    private static final int MUTED = 0xFF52665F;
+    private static final int INK = 0xFF202039;
+    private static final int MUTED = 0xFF71718A;
     private LinearLayout content;
     private LinearLayout sims;
     private SimRepository repository;
@@ -42,20 +46,73 @@ public final class MainActivity extends Activity {
             return insets;
         });
         setContentView(scroll);
-        text(content, R.string.app_name, 30, true);
-        text(content, R.string.tagline, 14, false);
-        space(content, 32);
-        text(content, R.string.overview, 26, true);
-        text(content, R.string.intro, 16, false);
-        space(content, 24);
-        text(content, R.string.sims, 18, true);
+        LinearLayout header = row();
+        LinearLayout brand = new LinearLayout(this);
+        brand.setOrientation(LinearLayout.VERTICAL);
+        text(brand, R.string.app_name, 28, true);
+        text(brand, R.string.tagline, 12, false);
+        header.addView(brand, new LinearLayout.LayoutParams(0, -2, 1));
+        TextView badge = text(header, R.string.carrier_badge, 12, true);
+        badge.setTextColor(0xFF6550C8);
+        badge.setPadding(dp(12), dp(8), dp(12), dp(8));
+        badge.setBackground(shape(0xFFEAE5FF, 16));
+        content.addView(header);
+        space(content, 28);
+        text(content, R.string.overview, 30, true);
+        text(content, R.string.intro, 14, false);
+        space(content, 18);
+
+        LinearLayout hero = card();
+        GradientDrawable gradient = new GradientDrawable(GradientDrawable.Orientation.TL_BR,
+                new int[]{0xFF6850D7, 0xFF40349C});
+        gradient.setCornerRadius(dp(26));
+        hero.setBackground(gradient);
+        LinearLayout heroTop = row();
+        TextView title = text(heroTop, R.string.balance, 15, true);
+        title.setTextColor(0xFFE6E0FF);
+        heroTop.addView(new View(this), new LinearLayout.LayoutParams(0, 1, 1));
+        icon(heroTop, R.drawable.ic_signal, 0xFFE6E0FF, 28);
+        hero.addView(heroTop);
+        space(hero, 16);
+        LinearLayout amount = row();
+        TextView value = text(amount, R.string.empty_amount, 48, true);
+        value.setTextColor(Color.WHITE);
+        TextView unit = text(amount, R.string.currency_cup, 16, true);
+        unit.setTextColor(0xFFE6E0FF);
+        unit.setPadding(dp(12), dp(16), 0, 0);
+        hero.addView(amount);
+        space(hero, 14);
+        View divider = new View(this);
+        divider.setBackgroundColor(0x33FFFFFF);
+        hero.addView(divider, new LinearLayout.LayoutParams(-1, dp(1)));
+        space(hero, 10);
+        TextView status = text(hero, R.string.balance_pending, 13, false);
+        status.setTextColor(0xFFE6E0FF);
+        content.addView(hero);
+        space(content, 14);
+
+        LinearLayout metrics = row();
+        addMetric(metrics, R.string.data_title, R.string.data_unit, R.drawable.ic_data, 0xFF5363CE, 0xFFEBEEFF);
+        spaceGap(metrics);
+        addMetric(metrics, R.string.voice_title, R.string.voice_unit, R.drawable.ic_voice, 0xFFC2733D, 0xFFFFEFE2);
+        content.addView(metrics);
+        space(content, 26);
+        text(content, R.string.sims, 20, true);
+        text(content, R.string.sim_subtitle, 13, false);
         sims = card();
         content.addView(sims);
-        addSummary(R.string.balance, R.string.balance_detail);
-        addSummary(R.string.allowances, R.string.allowances_detail);
-        space(content, 24);
-        text(content, R.string.about_title, 18, true);
-        text(content, R.string.about_detail, 14, false);
+        space(content, 20);
+        LinearLayout privacy = row();
+        privacy.setGravity(Gravity.CENTER_VERTICAL);
+        icon(privacy, R.drawable.ic_shield, 0xFF6550C8, 22);
+        LinearLayout privacyText = new LinearLayout(this);
+        privacyText.setOrientation(LinearLayout.VERTICAL);
+        privacyText.setPadding(dp(12), 0, 0, 0);
+        text(privacyText, R.string.about_title, 13, true);
+        text(privacyText, R.string.about_detail, 12, false);
+        privacy.addView(privacyText, new LinearLayout.LayoutParams(0, -2, 1));
+        content.addView(privacy);
+        space(content, 12);
     }
 
     @Override protected void onResume() {
@@ -65,8 +122,15 @@ public final class MainActivity extends Activity {
 
     private void renderSims(boolean denied) {
         sims.removeAllViews();
+        LinearLayout simHeader = row();
+        simHeader.setGravity(Gravity.CENTER_VERTICAL);
+        icon(simHeader, R.drawable.ic_sim, 0xFF6550C8, 32);
+        TextView simTitle = text(simHeader, R.string.sim_card_title, 16, true);
+        simTitle.setPadding(dp(12), 0, 0, 0);
+        sims.addView(simHeader);
+        space(sims, 10);
         if (checkSelfPermission(Manifest.permission.READ_PHONE_STATE) != PackageManager.PERMISSION_GRANTED) {
-            text(sims, denied ? R.string.permission_denied : R.string.permission_intro, 16, false);
+            text(sims, denied ? R.string.permission_denied : R.string.permission_intro, 14, false);
             button(sims, R.string.connect, view -> requestPermissions(
                     new String[]{Manifest.permission.READ_PHONE_STATE}, PHONE_PERMISSION));
             if (denied || getPreferences(MODE_PRIVATE).getBoolean("permission_requested", false)) {
@@ -77,7 +141,7 @@ public final class MainActivity extends Activity {
         }
         try {
             List<SubscriptionInfo> subscriptions = repository.activeSubscriptions();
-            if (subscriptions.isEmpty()) text(sims, R.string.no_sims, 16, false);
+            if (subscriptions.isEmpty()) text(sims, R.string.no_sims, 14, false);
             for (SubscriptionInfo subscription : subscriptions) {
                 CharSequence carrier = subscription.getCarrierName();
                 TextView label = text(sims, R.string.sims, 18, true);
@@ -98,13 +162,49 @@ public final class MainActivity extends Activity {
         }
     }
 
-    private void addSummary(int title, int description) {
+    private void addMetric(LinearLayout parent, int title, int unit, int drawable, int tint, int fill) {
         LinearLayout panel = card();
-        text(panel, title, 16, true);
-        TextView value = text(panel, R.string.unavailable, 24, true);
-        value.setTextColor(0xFF087F67);
-        text(panel, description, 14, false);
-        content.addView(panel);
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, -2, 1);
+        panel.setLayoutParams(params);
+        LinearLayout iconRow = row();
+        icon(iconRow, drawable, tint, 24);
+        panel.addView(iconRow);
+        space(panel, 10);
+        text(panel, title, 14, true);
+        text(panel, R.string.empty_amount, 30, true);
+        TextView caption = text(panel, unit, 12, false);
+        caption.setTextColor(tint);
+        caption.setBackground(shape(fill, 8));
+        caption.setPadding(dp(8), dp(4), dp(8), dp(4));
+        space(panel, 6);
+        text(panel, R.string.awaiting_query, 11, false);
+        parent.addView(panel);
+    }
+
+    private LinearLayout row() {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        return row;
+    }
+
+    private void spaceGap(LinearLayout parent) {
+        parent.addView(new View(this), new LinearLayout.LayoutParams(dp(14), 1));
+    }
+
+    private GradientDrawable shape(int color, int radius) {
+        GradientDrawable shape = new GradientDrawable();
+        shape.setColor(color);
+        shape.setCornerRadius(dp(radius));
+        return shape;
+    }
+
+    private void icon(LinearLayout parent, int resource, int tint, int size) {
+        ImageView icon = new ImageView(this);
+        icon.setImageResource(resource);
+        icon.setImageTintList(ColorStateList.valueOf(tint));
+        icon.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        parent.addView(icon, new LinearLayout.LayoutParams(dp(size), dp(size)));
     }
 
     private LinearLayout card() {
@@ -113,7 +213,8 @@ public final class MainActivity extends Activity {
         panel.setPadding(dp(20), dp(20), dp(20), dp(20));
         GradientDrawable background = new GradientDrawable();
         background.setColor(Color.WHITE);
-        background.setCornerRadius(dp(20));
+        background.setCornerRadius(dp(22));
+        background.setStroke(dp(1), 0xFFE9E9F2);
         panel.setBackground(background);
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-1, -2);
         params.topMargin = dp(14);
@@ -128,6 +229,7 @@ public final class MainActivity extends Activity {
         view.setTextColor(bold ? INK : MUTED);
         view.setTypeface(Typeface.DEFAULT, bold ? Typeface.BOLD : Typeface.NORMAL);
         view.setPadding(0, dp(4), 0, dp(4));
+        view.setLineSpacing(dp(2), 1);
         parent.addView(view);
         return view;
     }
@@ -137,6 +239,16 @@ public final class MainActivity extends Activity {
         button.setText(label);
         button.setAllCaps(false);
         button.setOnClickListener(listener);
+        button.setTextColor(Color.WHITE);
+        button.setTextSize(14);
+        button.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        button.setBackground(new RippleDrawable(ColorStateList.valueOf(0x33FFFFFF),
+                shape(0xFF6550C8, 14), null));
+        button.setPadding(dp(16), dp(12), dp(16), dp(12));
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-1, -2);
+        params.topMargin = dp(16);
+        button.setLayoutParams(params);
+        button.setMinHeight(dp(50));
         parent.addView(button);
     }
 
