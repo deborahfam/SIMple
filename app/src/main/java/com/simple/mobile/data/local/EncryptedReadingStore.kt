@@ -18,17 +18,20 @@ import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
 /** SQLite holds only random row IDs, IVs and authenticated encrypted typed payloads. */
-class EncryptedReadingStore(context: Context, name: String = "readings.db") : SQLiteOpenHelper(context, name, null, 2) {
+class EncryptedReadingStore(context: Context, name: String = "readings.db") : SQLiteOpenHelper(context, name, null, 3) {
+    @Volatile var unreadableCount: Int = 0
+        private set
     data class Entry(val subscription: Int, val reading: CarrierReading)
     override fun onCreate(db: SQLiteDatabase) {
-        db.execSQL("CREATE TABLE readings (id TEXT PRIMARY KEY NOT NULL, iv BLOB NOT NULL, payload BLOB NOT NULL)")
+        db.execSQL("CREATE TABLE readings (id TEXT PRIMARY KEY NOT NULL, iv BLOB NOT NULL, payload BLOB NOT NULL, damaged INTEGER NOT NULL DEFAULT 0)")
         createProfiles(db)
     }
     private fun createProfiles(db: SQLiteDatabase) {
         db.execSQL("CREATE TABLE line_profiles (id TEXT PRIMARY KEY NOT NULL, iv BLOB NOT NULL, payload BLOB NOT NULL)")
     }
     override fun onUpgrade(db: SQLiteDatabase, old: Int, new: Int) {
-        if (old == 1 && new == 2) createProfiles(db) else error("Unsupported database migration")
+        if (old < 2) createProfiles(db)
+        if (old < 3) db.execSQL("ALTER TABLE readings ADD COLUMN damaged INTEGER NOT NULL DEFAULT 0")
     }
     private fun decrypt(id: String, iv: ByteArray, payload: ByteArray): JSONObject {
         val cipher = Cipher.getInstance("AES/GCM/NoPadding").apply {
@@ -68,6 +71,8 @@ class EncryptedReadingStore(context: Context, name: String = "readings.db") : SQ
         }.generateKey()
     }
     @Synchronized fun save(subscription: Int, reading: CarrierReading, eventId: String? = null): Boolean {
+        // Classify damaged rows before retention can remove old records.
+        history()
         val id = eventId?.let { UUID.nameUUIDFromBytes(it.toByteArray()).toString() } ?: UUID.randomUUID().toString()
         val json = JSONObject().put("subscription", subscription).put("query", reading.query().name)
             .put("at", reading.receivedAt()).put("balance", reading.balanceCup()).put("voice", reading.voiceSeconds() as Any?)
@@ -93,15 +98,18 @@ class EncryptedReadingStore(context: Context, name: String = "readings.db") : SQ
                 val duplicate = eventId != null && writableDatabase.rawQuery("SELECT 1 FROM readings WHERE id=?", arrayOf(id)).use { it.moveToFirst() }
                 check(duplicate) { "Insert failed" }
             }
-            writableDatabase.execSQL("DELETE FROM readings WHERE rowid NOT IN (SELECT rowid FROM readings ORDER BY rowid DESC LIMIT 300)")
+            writableDatabase.execSQL("DELETE FROM readings WHERE damaged=0 AND rowid NOT IN (SELECT rowid FROM readings WHERE damaged=0 ORDER BY rowid DESC LIMIT 300)")
             writableDatabase.setTransactionSuccessful()
             return inserted
         } finally { writableDatabase.endTransaction() }
     }
     @Synchronized fun history(): List<Entry> {
         val rows = mutableListOf<Entry>()
-        readableDatabase.rawQuery("SELECT id,iv,payload FROM readings ORDER BY rowid DESC LIMIT 300", null).use { cursor ->
+        val damaged = mutableListOf<String>()
+        val recovered = mutableListOf<String>()
+        readableDatabase.rawQuery("SELECT id,iv,payload FROM readings ORDER BY rowid DESC", null).use { cursor ->
             while (cursor.moveToNext()) {
+                try {
                 val cipher = Cipher.getInstance("AES/GCM/NoPadding").apply {
                     init(Cipher.DECRYPT_MODE, key(), GCMParameterSpec(128, cursor.getBlob(1)))
                     updateAAD(cursor.getString(0).toByteArray())
@@ -121,8 +129,19 @@ class EncryptedReadingStore(context: Context, name: String = "readings.db") : SQ
                     json.longOrNull("expiry"), json.stringOrNull("rechargeReceived"), json.stringOrNull("rechargeAvailable"),
                     json.optString("source", "USSD"), json.optJSONObject("purchase")?.let { p -> CarrierReading.Purchase(p.longOrNull("bytes"), p.longOrNull("lte"), p.longOrNull("voice"), p.longOrNull("sms"), p.getInt("days"), p.getBoolean("firstUse")) },
                     json.longOrNull("closes"), json.longOrNull("nextRecharge")))
+                recovered += cursor.getString(0)
+                } catch (_: javax.crypto.AEADBadTagException) { damaged += cursor.getString(0) }
+                  catch (_: org.json.JSONException) { damaged += cursor.getString(0) }
+                  catch (_: IllegalArgumentException) { damaged += cursor.getString(0) }
             }
         }
+        writableDatabase.beginTransaction()
+        try {
+            damaged.forEach { writableDatabase.execSQL("UPDATE readings SET damaged=1 WHERE id=?", arrayOf(it)) }
+            recovered.forEach { writableDatabase.execSQL("UPDATE readings SET damaged=0 WHERE id=?", arrayOf(it)) }
+            writableDatabase.setTransactionSuccessful()
+        } finally { writableDatabase.endTransaction() }
+        unreadableCount = damaged.size
         return rows.sortedByDescending { it.reading.receivedAt() }
     }
     /** Decrypt routing metadata in a transaction; never add plaintext subscription columns. */

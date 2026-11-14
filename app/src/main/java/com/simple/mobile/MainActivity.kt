@@ -46,6 +46,13 @@ class MainActivity : ComponentActivity() {
             model.state.collect { if (it.storageReady && !it.busy && !it.managingLine) resumePendingQuery() }
         }
         setContent {
+            val dark = androidx.compose.foundation.isSystemInDarkTheme()
+            androidx.compose.runtime.SideEffect {
+                androidx.core.view.WindowCompat.getInsetsController(window, window.decorView).apply {
+                    isAppearanceLightStatusBars = !dark
+                    isAppearanceLightNavigationBars = !dark
+                }
+            }
             Dashboard(model,
                 onConnect = { permissions.launch(arrayOf(Manifest.permission.READ_PHONE_STATE, Manifest.permission.CALL_PHONE)) },
                 onQuery = { query -> requestQuery(query.name) },

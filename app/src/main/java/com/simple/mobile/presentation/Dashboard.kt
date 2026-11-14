@@ -1,5 +1,10 @@
+@file:OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+
 package com.simple.mobile.presentation
 
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -34,17 +39,18 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-private val Ink = Color(0xFF29223D)
-private val Muted = Color(0xFF80788F)
-private val Paper = Color(0xFFF7F5FC)
+private val Ink: Color @Composable get() = if (isSystemInDarkTheme()) Color(0xFFF1EAF9) else Color(0xFF29223D)
+private val Muted: Color @Composable get() = if (isSystemInDarkTheme()) Color(0xFFC6BDCF) else Color(0xFF655C73)
+private val Paper: Color @Composable get() = if (isSystemInDarkTheme()) Color(0xFF17131E) else Color(0xFFF7F5FC)
 private val Mint = Color(0xFFE0D4FF)
-private val Teal = Color(0xFF7353B6)
+private val Teal: Color @Composable get() = if (isSystemInDarkTheme()) Color(0xFFD1B8FF) else Color(0xFF7353B6)
 private val Navy = Color(0xFF35234F)
 
 @Composable fun Dashboard(model: DashboardViewModel, onConnect: () -> Unit,
     onQuery: (CubacelQuery) -> Unit, onRefreshAll: () -> Unit, onReminders: (Boolean) -> Unit, onNotificationSettings: () -> Unit, onSmsEnabled: (Boolean) -> Unit, onSyncSms: () -> Unit, onSettings: () -> Unit, onAppSettings: () -> Unit,
     onDial: (String) -> Unit, onRechargeSite: () -> Unit) {
     val state by model.state.collectAsStateWithLifecycle()
+    val stacked = LocalConfiguration.current.screenWidthDp < 380 || LocalDensity.current.fontScale > 1.2f
     val now by produceState(System.currentTimeMillis()) {
         while (true) { value = System.currentTimeMillis(); kotlinx.coroutines.delay(30_000) }
     }
@@ -62,14 +68,14 @@ private val Navy = Color(0xFF35234F)
     var nickname by remember { mutableStateOf("") }
     val snackbar = remember { SnackbarHostState() }
     LaunchedEffect(state.message) { state.message?.let { snackbar.showSnackbar(it); model.dismissMessage() } }
-    MaterialTheme(colorScheme = lightColorScheme(primary = Teal, secondary = Navy, background = Paper, surface = Color.White,
+    MaterialTheme(colorScheme = if (isSystemInDarkTheme()) darkColorScheme(primary = Teal, background = Paper, surface = Color(0xFF282231), onSurface = Ink, onBackground = Ink) else lightColorScheme(primary = Teal, secondary = Navy, background = Paper, surface = Color.White,
         onSurface = Ink, onBackground = Ink)) {
         Scaffold(containerColor = Paper, snackbarHost = { SnackbarHost(snackbar) }, bottomBar = {
-            NavigationBar(containerColor = Color.White, tonalElevation = 0.dp) {
+            NavigationBar(containerColor = MaterialTheme.colorScheme.surface, tonalElevation = 0.dp) {
                 listOf("Inicio" to Icons.Outlined.SpaceDashboard, "Historial" to Icons.Outlined.History,
                     "Ajustes" to Icons.Outlined.Tune).forEachIndexed { index, item ->
                     NavigationBarItem(selected = page == index, onClick = { page = index }, icon = { Icon(item.second, null) },
-                        label = { Text(item.first) }, colors = NavigationBarItemDefaults.colors(indicatorColor = Mint))
+                        label = { Text(item.first) }, colors = NavigationBarItemDefaults.colors(indicatorColor = Mint, selectedIconColor = Navy))
                 }
             }
         }) { padding ->
@@ -84,10 +90,10 @@ private val Navy = Color(0xFF35234F)
                             Spacer(Modifier.width(10.dp))
                             Text("SIMple", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Ink)
                             Spacer(Modifier.weight(1f))
-                            Surface(color = Color(0xFFEEE8F7), shape = CircleShape) {
+                            if (!stacked) Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = CircleShape) {
                                 Row(Modifier.padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                                     Box(Modifier.size(5.dp).background(Teal, CircleShape)); Spacer(Modifier.width(5.dp))
-                                    Text("SOLO EN TU MÓVIL", color = Teal, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                    Text("SOLO EN TU MÓVIL", color = Teal, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                 }
                             }
                         }
@@ -122,14 +128,14 @@ private val Navy = Color(0xFF35234F)
                                 items(state.displayLines, key = { it.subscription }) { line ->
                                     val selected = state.selected == line.subscription
                                     Surface(onClick = { model.select(line.subscription) }, shape = RoundedCornerShape(18.dp),
-                                        color = if (selected) Navy else Color.White) {
+                                        color = if (selected) Navy else MaterialTheme.colorScheme.surface) {
                                         Row(Modifier.padding(horizontal = 16.dp, vertical = 13.dp), verticalAlignment = Alignment.CenterVertically) {
                                             Icon(Icons.Outlined.SimCard, null, tint = if (selected) Mint else Muted, modifier = Modifier.size(21.dp))
                                             Spacer(Modifier.width(10.dp))
                                             Column {
                                                 Text(line.label, color = if (selected) Color.White else Ink,
                                                     fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                                                Text(if (!line.active) "Guardada · solo historial" else if (line.cubacel) "Cubacel · consultas disponibles" else "Operador sin integración", color = if (selected) Color(0xFFD6C8E8) else Muted, fontSize = 10.sp)
+                                                Text(if (!line.active) "Guardada · solo historial" else if (line.cubacel) "Cubacel · consultas disponibles" else "Operador sin integración", color = if (selected) Color(0xFFD6C8E8) else Muted, fontSize = 12.sp)
                                             }
                                             if (selected) { Spacer(Modifier.width(12.dp)); Icon(Icons.Outlined.CheckCircle, null, tint = Mint, modifier = Modifier.size(17.dp)) }
                                         }
@@ -149,6 +155,13 @@ private val Navy = Color(0xFF35234F)
                                 TextButton(onClick = { deleteSubscription = line.subscription; deleteLabel = line.label; delete = true },
                                     enabled = state.storageReady && !state.busy && !state.managingLine) { Text("Eliminar datos de esta línea") }
                             }
+                        }
+                    }
+                    if (state.unreadableCount > 0) item {
+                        WhiteCard {
+                            Text("${state.unreadableCount} lecturas no se pudieron abrir", fontWeight = FontWeight.Bold)
+                            Text("Mostramos las lecturas legibles. Los registros afectados siguen cifrados y conservados; algunos valores pueden ser anteriores. Reintenta para comprobar si vuelven a estar disponibles.")
+                            OutlinedButton(onClick = { model.retryStorage() }) { Text("Reintentar lectura") }
                         }
                     }
                     val entries = state.entries.filter { it.subscription == state.selected }
@@ -206,7 +219,7 @@ private val Navy = Color(0xFF35234F)
                             }
                         }
                         item {
-                            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            FlowRow(maxItemsInEachRow = if (stacked) 1 else 2, horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                                 ActionTile("Recargar", "Añade saldo", Icons.Outlined.AddCard, Color(0xFFEDE8FA), Modifier.weight(1f)) { recharge = true }
                                 ActionTile("Planes", "Datos y llamadas", Icons.Outlined.ShoppingBag, Color(0xFFECE6F4), Modifier.weight(1f)) { confirmDial = "*133#" }
                             }
@@ -229,7 +242,7 @@ private val Navy = Color(0xFF35234F)
                         }
                         item { SectionTitle("Tus recursos", "Consulta por categoría") }
                         item {
-                            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            FlowRow(maxItemsInEachRow = if (stacked) 1 else 2, horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                                 val general = data?.bundles()?.firstOrNull { it.kind() == "general" }
                                 ResourceCard("Datos", general?.let { if (it.unlimited()) "Ilimitado" else gb(it.bytes()) } ?: "—", "GB · Internet general",
                                     Icons.Outlined.DataUsage, Color(0xFFE6EEF9), Modifier.weight(1f), enabled, data, now, state.isQuerying(CubacelQuery.DATA), general?.expiresAt() ?: data?.expiresAt()) { onQuery(CubacelQuery.DATA) }
@@ -238,7 +251,7 @@ private val Navy = Color(0xFF35234F)
                             }
                         }
                         item {
-                            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            FlowRow(maxItemsInEachRow = if (stacked) 1 else 2, horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                                 ResourceCard("Mensajes", sms?.smsCount()?.toString() ?: "—", "SMS disponibles", Icons.Outlined.Sms,
                                     Color(0xFFEDE8FA), Modifier.weight(1f), enabled, sms, now, state.isQuerying(CubacelQuery.SMS)) { onQuery(CubacelQuery.SMS) }
                                 ResourceCard("Bonos", bonus?.let { "${it.bundles().size}" } ?: "—", "Bolsas de datos", Icons.Outlined.Redeem,
@@ -384,12 +397,12 @@ private val Navy = Color(0xFF35234F)
     }
     WhiteCard {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(38.dp).background(Color(0xFFEEE8F7), RoundedCornerShape(12.dp)), contentAlignment = Alignment.Center) {
+            Box(Modifier.size(38.dp).background(MaterialTheme.colorScheme.secondaryContainer, RoundedCornerShape(12.dp)), contentAlignment = Alignment.Center) {
                 Icon(Icons.Outlined.EventAvailable, null, tint = Teal, modifier = Modifier.size(23.dp))
             }
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
-                Text("RECARGA NACIONAL", fontSize = 10.sp, letterSpacing = 1.sp, color = Muted)
+                Text("RECARGA NACIONAL", fontSize = 12.sp, letterSpacing = 1.sp, color = Muted)
                 Text("Tu próximo cupo", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
             }
         }
@@ -401,7 +414,7 @@ private val Navy = Color(0xFF35234F)
             else -> "Según la última respuesta del operador. Consulta de nuevo antes de recargar."
         }, fontSize = 12.sp, color = Muted)
         if (available != null) Text("Cupo en la última consulta: ${number(available)} CUP", fontSize = 12.sp, fontWeight = FontWeight.Medium)
-        reading?.receivedAt()?.let { Text("${freshnessLabel(it, now)} · ${stamp(it)}", color = Muted, fontSize = 10.sp) }
+        reading?.receivedAt()?.let { Text("${freshnessLabel(it, now)} · ${stamp(it)}", color = Muted, fontSize = 12.sp) }
         OutlinedButton(onClick = query, enabled = enabled, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)) {
             if (querying) CircularProgressIndicator(Modifier.size(17.dp), strokeWidth = 2.dp)
             else Icon(Icons.Outlined.Refresh, null, modifier = Modifier.size(17.dp))
@@ -414,33 +427,33 @@ private fun rechargeDate(at: Long) = SimpleDateFormat("d 'de' MMMM 'de' yyyy", L
     .apply { timeZone = java.util.TimeZone.getTimeZone("America/Havana") }.format(Date(at))
 
 @Composable private fun WhiteCard(content: @Composable ColumnScope.() -> Unit) {
-    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp)).background(Color.White).padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp), content = content)
+    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp)).background(MaterialTheme.colorScheme.surface).padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp), content = content)
 }
 @Composable private fun SectionTitle(title: String, detail: String) {
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(title, fontSize = 17.sp, fontWeight = FontWeight.Bold, color = Ink)
-        Text(detail, fontSize = 10.sp, color = Muted)
+        Text(detail, fontSize = 12.sp, color = Muted)
     }
 }
 @Composable private fun ActionTile(title: String, detail: String, icon: ImageVector, color: Color, modifier: Modifier, action: () -> Unit) {
-    Surface(onClick = action, color = color, shape = RoundedCornerShape(18.dp), modifier = modifier) {
+    Surface(onClick = action, color = MaterialTheme.colorScheme.secondaryContainer, shape = RoundedCornerShape(18.dp), modifier = modifier) {
         Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(icon, null, tint = Ink, modifier = Modifier.size(23.dp)); Spacer(Modifier.width(10.dp))
-            Column { Text(title, fontSize = 14.sp, fontWeight = FontWeight.Bold); Text(detail, fontSize = 10.sp, color = Muted) }
+            Column { Text(title, fontSize = 14.sp, fontWeight = FontWeight.Bold); Text(detail, fontSize = 12.sp, color = Muted) }
         }
     }
 }
 @Composable private fun ResourceCard(title: String, value: String, unit: String, icon: ImageVector, tint: Color, modifier: Modifier, enabled: Boolean, reading: CarrierReading?, now: Long, querying: Boolean, expiry: Long? = reading?.expiresAt(), action: () -> Unit) {
-    Surface(onClick = action, enabled = enabled, shape = RoundedCornerShape(21.dp), color = Color.White, modifier = modifier) {
+    Surface(onClick = action, enabled = enabled, shape = RoundedCornerShape(21.dp), color = MaterialTheme.colorScheme.surface, modifier = modifier) {
         Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(34.dp).background(tint, RoundedCornerShape(11.dp)), contentAlignment = Alignment.Center) { Icon(icon, null, tint = Ink, modifier = Modifier.size(19.dp)) }
+                Box(Modifier.size(34.dp).background(MaterialTheme.colorScheme.secondaryContainer, RoundedCornerShape(11.dp)), contentAlignment = Alignment.Center) { Icon(icon, null, tint = Ink, modifier = Modifier.size(19.dp)) }
                 if (querying) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
                 else Icon(Icons.Outlined.NorthEast, "Consultar $title", tint = Muted, modifier = Modifier.size(16.dp))
             }
             Text(if (querying) "Consultando $title…" else title, fontSize = 12.sp, color = Muted)
             Text(value, fontSize = if (value.length > 8) 20.sp else 29.sp, lineHeight = 34.sp, fontWeight = FontWeight.SemiBold, color = Ink)
-            Text(unit, fontSize = 10.sp, color = Muted)
+            Text(unit, fontSize = 12.sp, color = Muted)
             Text(reading?.let { freshnessLabel(it.receivedAt(), now) } ?: "Sin consultas", fontSize = 12.sp, color = Muted)
             reading?.let { Text(stamp(it.receivedAt()), fontSize = 11.sp, color = Muted) }
             expiry?.let { Text(expirationLabel(it, now), fontSize = 12.sp,
@@ -457,7 +470,7 @@ private fun rechargeDate(at: Long) = SimpleDateFormat("d 'de' MMMM 'de' yyyy", L
 @Composable private fun PrivacyFooter() {
     Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
         Icon(Icons.Outlined.Lock, null, tint = Muted, modifier = Modifier.size(13.dp)); Spacer(Modifier.width(6.dp))
-        Text("Guardado automático · Cifrado en tu dispositivo", color = Muted, fontSize = 10.sp)
+        Text("Guardado automático · Cifrado en tu dispositivo", color = Muted, fontSize = 12.sp)
     }
 }
 private fun stamp(at: Long) = SimpleDateFormat("d MMM · HH:mm", Locale("es")).format(Date(at))

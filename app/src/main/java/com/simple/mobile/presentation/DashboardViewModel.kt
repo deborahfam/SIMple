@@ -34,7 +34,7 @@ data class Line(val subscription: Int, val slot: Int, val carrier: String, val c
 data class DashboardState(
     val lines: List<Line> = emptyList(), val selected: Int = -1,
     val entries: List<EncryptedReadingStore.Entry> = emptyList(),
-    val loading: Boolean = true, val busy: Boolean = false,
+    val unreadableCount: Int = 0, val loading: Boolean = true, val busy: Boolean = false,
     val message: String? = null, val permission: Boolean = false,
     val storageReady: Boolean = false,
     val activeQuery: CubacelQuery? = null, val queryNumber: Int = 0, val queryTotal: Int = 0,
@@ -59,7 +59,7 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
     init {
         loadHistory()
         viewModelScope.launch { app.smsImport.state.collect { status -> mutable.update { it.copy(smsStatus = status) } } }
-        viewModelScope.launch { app.readings.collect { values -> mutable.update { old -> old.copy(entries = values).let { it.copy(selected = LineCatalog.selection(old.selected, it.displayLines)) } } } }
+        viewModelScope.launch { app.readings.collect { values -> mutable.update { old -> old.copy(entries = values, unreadableCount = store.unreadableCount).let { it.copy(selected = LineCatalog.selection(old.selected, it.displayLines)) } } } }
     }
     fun refreshLines() {
         val app = getApplication<Application>()
@@ -82,7 +82,7 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
                 val entries = store.history()
                 val names = store.nicknames()
                 app.publishReadings(entries)
-                if (!disposed) mutable.update { it.copy(entries = entries, nicknames = names, loading = false, storageReady = true) }
+                if (!disposed) mutable.update { it.copy(entries = entries, unreadableCount = store.unreadableCount, nicknames = names, loading = false, storageReady = true) }
             } catch (_: Exception) {
                 if (!disposed) mutable.update { it.copy(loading = false, storageReady = false,
                     message = "No se pudo abrir el historial cifrado. Tus datos no se han borrado. Puedes reintentar desde Ajustes.") }

@@ -89,12 +89,33 @@ class EncryptedStoreTest {
         EncryptedReadingStore(context, name).use { store ->
             store.save(77, CubacelParser().parse(CubacelQuery.BALANCE, "Saldo: 25 CUP", 123L))
             store.writableDatabase.execSQL("DROP TABLE line_profiles")
+            store.writableDatabase.execSQL("ALTER TABLE readings DROP COLUMN damaged")
             store.writableDatabase.version = 1
         }
         EncryptedReadingStore(context, name).use { upgraded ->
             assertEquals(1, upgraded.history().size)
             upgraded.rename(77, "Actualizada")
             assertEquals("Actualizada", upgraded.nicknames()[77])
+        }
+        context.deleteDatabase(name)
+    }
+
+    @Test fun corruptedReadingIsPreservedWhileHealthyReadingsLoad() {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val name = "test-damage.db"
+        context.deleteDatabase(name)
+        EncryptedReadingStore(context, name).use { store ->
+            val r = CubacelParser().parse(CubacelQuery.BALANCE, "Saldo: 25 CUP", 123L)
+            store.save(77, r)
+            store.save(88, r)
+            store.writableDatabase.execSQL("UPDATE readings SET payload=zeroblob(32) WHERE rowid=(SELECT MIN(rowid) FROM readings)")
+            assertEquals(1, store.history().size)
+            assertEquals(1, store.unreadableCount)
+            repeat(305) { store.save(88, r) }
+            store.readableDatabase.rawQuery("SELECT COUNT(*) FROM readings WHERE damaged=1", null).use { c ->
+                c.moveToFirst(); assertEquals(1, c.getInt(0))
+            }
+            assertEquals(300, store.history().size)
         }
         context.deleteDatabase(name)
     }

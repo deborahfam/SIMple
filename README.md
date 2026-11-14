@@ -136,3 +136,16 @@ History supports category filters, rolling 24-hour/7-day/30-day windows, and **C
 readings globally. A requested query or refresh-all resumes after phone permissions are granted,
 including a return from Android Settings. The original SIM is retained and the pending action
 is consumed once; removing that SIM requires choosing a line and requesting the query again.
+
+## Accessibility and recovery
+
+The dashboard follows Android light/dark mode. Small labels now use at least 12sp, and resource
+and action pairs stack on narrow screens or when system font scale exceeds 1.2. Section labels
+wrap vertically instead of competing for horizontal space.
+
+Database version 3 marks individually unreadable encrypted readings. Readable history remains
+available with a persistent warning and a retry action. Detected damaged rows retain their original
+ciphertext and are excluded from the normal 300-reading pruning limit. Retrying reads them again;
+this cannot repair damaged ciphertext or restore a lost encryption key. Whole-database or Keystore
+failures still report storage unavailable. Explicit deletion of all local data remains destructive;
+per-line deletion fails safely if a damaged record's SIM association cannot be read.
