@@ -21,6 +21,7 @@ import com.simple.mobile.presentation.DashboardViewModel
 class MainActivity : ComponentActivity() {
     private var pendingQuery: String? = null
     private var pendingSubscription: Int = -1
+    private lateinit var updates: com.simple.mobile.data.updates.AppUpdates
     private lateinit var model: DashboardViewModel
     private val permissions = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
         model.refreshLines()
@@ -39,6 +40,7 @@ class MainActivity : ComponentActivity() {
     }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        updates = ViewModelProvider(this)[com.simple.mobile.data.updates.AppUpdates::class.java]
         model = ViewModelProvider(this)[DashboardViewModel::class.java]
         pendingQuery = savedInstanceState?.getString("pending_query")
         pendingSubscription = savedInstanceState?.getInt("pending_subscription", -1) ?: -1
@@ -53,7 +55,7 @@ class MainActivity : ComponentActivity() {
                     isAppearanceLightNavigationBars = !dark
                 }
             }
-            Dashboard(model,
+            Dashboard(model, updates, onInstallUpdate = { installUpdate() },
                 onConnect = { permissions.launch(arrayOf(Manifest.permission.READ_PHONE_STATE, Manifest.permission.CALL_PHONE)) },
                 onQuery = { query -> requestQuery(query.name) },
                 onRefreshAll = { requestQuery("ALL") },
@@ -86,6 +88,20 @@ class MainActivity : ComponentActivity() {
             if ((application as SimpleApplication).smsImport.state.value.enabled &&
                 checkSelfPermission(Manifest.permission.READ_SMS) == PackageManager.PERMISSION_GRANTED) model.syncCarrierSms(false)
         }
+    }
+    private fun installUpdate() {
+        if (!updates.state.value.ready) return
+        if (!packageManager.canRequestPackageInstalls()) {
+            open(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:$packageName")))
+            model.notify("Permite instalar desde SIMple y vuelve a pulsar Instalar actualización.")
+            return
+        }
+        try {
+            updates.validate(updates.state.value.release!!.code)
+            val uri = androidx.core.content.FileProvider.getUriForFile(this, "$packageName.updates", updates.apk)
+            open(Intent(Intent.ACTION_VIEW).setDataAndType(uri, "application/vnd.android.package-archive")
+                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
+        } catch (e: Exception) { model.notify(e.message ?: "No se pudo abrir el instalador.") }
     }
     private fun requestQuery(query: String) {
         pendingQuery = query

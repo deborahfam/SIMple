@@ -11,8 +11,8 @@ android {
         applicationId = "com.simple.mobile"
         minSdk = 26
         targetSdk = 36
-        versionCode = 2
-        versionName = "0.2.0"
+        versionCode = 3
+        versionName = "0.3.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     buildFeatures { compose = true; buildConfig = true }
@@ -39,4 +39,12 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test:runner:1.6.2")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
+}
+
+// Builds an update compatible with locally installed debug APKs signed by this machine's key.
+tasks.register<Copy>("packageDebugUpdate") {
+    dependsOn("assembleDebug")
+    from(layout.buildDirectory.file("outputs/apk/debug/app-debug.apk"))
+    into(layout.buildDirectory.dir("outputs/updates"))
+    rename("app-debug.apk", "SIMple-${android.defaultConfig.versionCode}.apk")
 }

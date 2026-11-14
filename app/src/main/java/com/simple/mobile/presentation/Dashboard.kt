@@ -46,10 +46,11 @@ private val Mint = Color(0xFFE0D4FF)
 private val Teal: Color @Composable get() = if (isSystemInDarkTheme()) Color(0xFFD1B8FF) else Color(0xFF7353B6)
 private val Navy = Color(0xFF35234F)
 
-@Composable fun Dashboard(model: DashboardViewModel, onConnect: () -> Unit,
+@Composable fun Dashboard(model: DashboardViewModel, updates: com.simple.mobile.data.updates.AppUpdates, onInstallUpdate: () -> Unit, onConnect: () -> Unit,
     onQuery: (CubacelQuery) -> Unit, onRefreshAll: () -> Unit, onReminders: (Boolean) -> Unit, onNotificationSettings: () -> Unit, onSmsEnabled: (Boolean) -> Unit, onSyncSms: () -> Unit, onSettings: () -> Unit, onAppSettings: () -> Unit,
     onDial: (String) -> Unit, onRechargeSite: () -> Unit) {
     val state by model.state.collectAsStateWithLifecycle()
+    val update by updates.state.collectAsStateWithLifecycle()
     val stacked = LocalConfiguration.current.screenWidthDp < 380 || LocalDensity.current.fontScale > 1.2f
     val now by produceState(System.currentTimeMillis()) {
         while (true) { value = System.currentTimeMillis(); kotlinx.coroutines.delay(30_000) }
@@ -321,6 +322,18 @@ private val Navy = Color(0xFF35234F)
                     } else {
                         item {
                             WhiteCard {
+                                Text("Actualizar SIMple", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                                Text("Versión ${com.simple.mobile.BuildConfig.VERSION_NAME} (${com.simple.mobile.BuildConfig.VERSION_CODE})", color = Muted)
+                                Text("Consulta GitHub y descarga el APK usando Internet. Android te pedirá confirmar la instalación.", fontSize = 13.sp)
+                                Text(update.message, fontSize = 13.sp)
+                                if (update.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+                                OutlinedButton(onClick = { updates.check() }, enabled = !update.busy) { Text("Buscar actualización") }
+                                if (update.release != null && !update.ready) Button(onClick = { updates.download() }, enabled = !update.busy) { Text("Descargar actualización") }
+                                if (update.ready) Button(onClick = onInstallUpdate, enabled = !update.busy) { Text("Instalar actualización") }
+                            }
+                        }
+                        item {
+                            WhiteCard {
                                 Text("Conexión y permisos", fontWeight = FontWeight.Bold, fontSize = 18.sp)
                                 SettingsRow("Actualizar tarjetas SIM", Icons.Outlined.Refresh) { model.refreshLines() }
                                 SettingsRow("Gestionar SIM en Android", Icons.Outlined.SimCard, onSettings)
@@ -353,7 +366,7 @@ private val Navy = Color(0xFF35234F)
                             }
                         }
                         item {
-                            Text("SIMple 0.2 · Kotlin + Compose", fontSize = 12.sp, color = Muted)
+                            Text("SIMple ${com.simple.mobile.BuildConfig.VERSION_NAME}", fontSize = 12.sp, color = Muted)
                             Text("Las consultas necesitan una SIM Cubacel y cobertura. Los SMS del operador se importan solo si autorizas los permisos. Los anuncios y mensajes personales no se guardan.", fontSize = 12.sp, color = Muted)
                         }
                     }

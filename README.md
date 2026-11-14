@@ -19,7 +19,7 @@ Kotlin + Jetpack Compose presentation, MVVM, native subscription-aware USSD and 
   the in-flight response to be saved. Any query or storage failure stops the sequence without retries.
 - Recharge and plan actions open the phone dialer or ETECSA website for user completion.
 - Optional sender-filtered SMS import and new-message ingestion after Android permissions.
-- No Internet, contacts or identifier permissions; no telemetry or raw carrier logs.
+- No contacts or identifier permissions; no telemetry or raw carrier logs. Internet is used only for user-requested GitHub update checks and APK downloads.
 
 ## Limits
 
@@ -149,3 +149,30 @@ ciphertext and are excluded from the normal 300-reading pruning limit. Retrying 
 this cannot repair damaged ciphertext or restore a lost encryption key. Whole-database or Keystore
 failures still report storage unavailable. Explicit deletion of all local data remains destructive;
 per-line deletion fails safely if a damaged record's SIM association cannot be read.
+
+## Updating from the repository
+
+**Ajustes → Actualizar SIMple** checks the latest public stable GitHub Release for
+`deborahfam/SIMple`. It offers a download only for an asset named `SIMple-N.apk`, where N is a
+higher Android versionCode. After downloading, it checks the package ID, exact versionCode,
+and signing certificate against the installed app. Android then asks the user to approve
+installation; if necessary, enable installation from SIMple and tap Install again.
+No balance, SMS or history content is sent to GitHub. Update checks are manual only.
+
+To prepare the next update for existing local debug installations:
+
+1. Increment versionCode and versionName in `app/build.gradle.kts`.
+2. Run `./gradlew packageDebugUpdate` on the same machine/key used for the installed APK.
+3. Create a public stable GitHub Release for the corresponding source commit and attach
+   `app/build/outputs/updates/SIMple-N.apk`. Publishing is a separate maintainer action.
+
+Production releases should instead use a protected, stable release signing key and upload the
+signed release APK with the same naming convention. Never commit a signing key. A debug APK
+cannot update a release-signed installation, or vice versa. Do not uninstall to bypass a signature
+mismatch: doing so removes local history and its encryption key. Signing-key rotation is not
+supported by this updater's conservative certificate equality check.
+
+A private repository or one without a public stable release returns a helpful unavailable message.
+The repository source itself is not installable: it must first be built into a signed APK. The
+initial version containing the updater must be installed manually. Android may require allowing
+this app to install packages: [Android package installation permission](https://developer.android.com/reference/android/content/pm/PackageManager#canRequestPackageInstalls()).
