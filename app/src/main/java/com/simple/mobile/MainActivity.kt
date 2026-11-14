@@ -12,14 +12,19 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
 import com.simple.mobile.domain.carrier.CubacelQuery
 import com.simple.mobile.presentation.Dashboard
 import com.simple.mobile.presentation.DashboardViewModel
 
 class MainActivity : ComponentActivity() {
+    private var pendingQuery: String? = null
+    private var pendingSubscription: Int = -1
     private lateinit var model: DashboardViewModel
     private val permissions = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
         model.refreshLines()
+        if (resumePendingQuery()) return@registerForActivityResult
         model.notify(if (it.values.all { granted -> granted }) "Permisos listos. Ya puedes consultar tu SIM."
             else "Puedes ver tus lecturas guardadas. Para consultar, permite teléfono y llamadas en Ajustes.")
     }
@@ -35,21 +40,16 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         model = ViewModelProvider(this)[DashboardViewModel::class.java]
+        pendingQuery = savedInstanceState?.getString("pending_query")
+        pendingSubscription = savedInstanceState?.getInt("pending_subscription", -1) ?: -1
+        lifecycleScope.launch {
+            model.state.collect { if (it.storageReady && !it.busy && !it.managingLine) resumePendingQuery() }
+        }
         setContent {
             Dashboard(model,
                 onConnect = { permissions.launch(arrayOf(Manifest.permission.READ_PHONE_STATE, Manifest.permission.CALL_PHONE)) },
-                onQuery = { query ->
-                    if (checkSelfPermission(Manifest.permission.READ_PHONE_STATE) != PackageManager.PERMISSION_GRANTED ||
-                        checkSelfPermission(Manifest.permission.CALL_PHONE) != PackageManager.PERMISSION_GRANTED)
-                        permissions.launch(arrayOf(Manifest.permission.READ_PHONE_STATE, Manifest.permission.CALL_PHONE))
-                    else model.check(query)
-                },
-                onRefreshAll = {
-                    if (checkSelfPermission(Manifest.permission.READ_PHONE_STATE) != PackageManager.PERMISSION_GRANTED ||
-                        checkSelfPermission(Manifest.permission.CALL_PHONE) != PackageManager.PERMISSION_GRANTED)
-                        permissions.launch(arrayOf(Manifest.permission.READ_PHONE_STATE, Manifest.permission.CALL_PHONE))
-                    else model.refreshAll()
-                },
+                onQuery = { query -> requestQuery(query.name) },
+                onRefreshAll = { requestQuery("ALL") },
                 onReminders = { enabled ->
                     if (!enabled) model.setReminders(false)
                     else if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED)
@@ -72,12 +72,37 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         if (::model.isInitialized) {
             model.refreshLines()
+            resumePendingQuery()
             model.refreshReminderSettings()
             model.refreshSmsPermissions()
             selectReminderLine(intent)
             if ((application as SimpleApplication).smsImport.state.value.enabled &&
                 checkSelfPermission(Manifest.permission.READ_SMS) == PackageManager.PERMISSION_GRANTED) model.syncCarrierSms(false)
         }
+    }
+    private fun requestQuery(query: String) {
+        pendingQuery = query
+        pendingSubscription = model.state.value.selected
+        if (!resumePendingQuery()) permissions.launch(arrayOf(Manifest.permission.READ_PHONE_STATE, Manifest.permission.CALL_PHONE))
+    }
+    private fun resumePendingQuery(): Boolean {
+        val query = pendingQuery ?: return false
+        if (checkSelfPermission(Manifest.permission.READ_PHONE_STATE) != PackageManager.PERMISSION_GRANTED ||
+            checkSelfPermission(Manifest.permission.CALL_PHONE) != PackageManager.PERMISSION_GRANTED) return false
+        if (!model.state.value.storageReady || model.state.value.busy || model.state.value.managingLine) return false
+        pendingQuery = null // Consume before dispatch, including callback/onResume races.
+        if (model.state.value.lines.none { it.subscription == pendingSubscription && it.cubacel }) {
+            model.notify("La SIM de la consulta ya no está disponible. Selecciona una línea y vuelve a consultar.")
+            return true
+        }
+        model.select(pendingSubscription)
+        if (query == "ALL") model.refreshAll() else CubacelQuery.values().firstOrNull { it.name == query }?.let { model.check(it) }
+        return true
+    }
+    override fun onSaveInstanceState(outState: Bundle) {
+        outState.putString("pending_query", pendingQuery)
+        outState.putInt("pending_subscription", pendingSubscription)
+        super.onSaveInstanceState(outState)
     }
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)

@@ -130,3 +130,9 @@ without rewriting existing readings.
 The SMS panel shows connection and permission status, last successful sync time, and newly inserted
 readings (duplicates excluded). Turning import off invalidates queued work. Failed syncs preserve
 the last successful summary. **Sincronizar ahora** is available when import and read permissions are enabled.
+
+History supports category filters, rolling 24-hour/7-day/30-day windows, and **Cargar más** in
+25-reading increments. Filters apply to the selected line; storage still retains at most 300
+readings globally. A requested query or refresh-all resumes after phone permissions are granted,
+including a return from Android Settings. The original SIM is retained and the pending action
+is consumed once; removing that SIM requires choosing a line and requesting the query again.
