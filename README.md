@@ -1,50 +1,86 @@
 # SIMple
 
-An Android app foundation for tracking mobile balance, active data plans, and remaining allowances.
+Android app for Cubacel balance, data bundles, voice minutes, SMS and recharge status.
+Kotlin + Jetpack Compose presentation, MVVM, native subscription-aware USSD and on-device parsing.
 
-## Included
+## What works
 
-- Native Java 17 Android application (Android 8.0 / API 26 and newer).
-- Scrollable dashboard with balance and allowance integration placeholders.
-- Active SIM and multi-SIM discovery using Android's `SubscriptionManager`.
-- Phone permission requested only when the user taps **Find my SIMs**.
-- Permission denial, settings recovery, no SIM, and unsupported device states.
-- Local device access only; no server, analytics, or network permission. The USSD adapter additionally requires user-granted CALL_PHONE permission.
+- Separate selectable cards for active SIMs, including Dual SIM. SMS must carry a currently active Cubacel subscription ID; unknown historical SIM associations are skipped.
+- Read-only Cubacel USSD queries, gated by permissions and the SIM operator code.
+- National-recharge availability card: confirmed CUP capacity and carrier-provided reopening date.
+- Automatic parsing of recognized Spanish carrier responses and automatic encrypted saving.
+- SQLite history with AES-GCM encrypted typed payloads; keys remain in Android Keystore.
+- Dashboard and history survive app restarts. No manual balance-entry forms.
+- Recharge and plan actions open the phone dialer or ETECSA website for user completion.
+- Optional sender-filtered SMS import and new-message ingestion after Android permissions.
+- No Internet, contacts or identifier permissions; no telemetry or raw carrier logs.
 
-The domain models, asynchronous USSD adapter and verified Cubacel query catalog are now included. See [Android architecture](docs/ANDROID_ARCHITECTURE.md) and [Cubacel codes and sources](docs/CUBACEL_CODES.md). The dashboard now invokes the query adapter for the selected Cubacel SIM and displays the response on-device. Recharge and plan purchase actions open the dialer or official website for the user to complete. Multiple active SIMs have separate selectable cards. Manual balances/data/minutes are labelled and kept only for the current session; activity records exclude raw responses.
+## Limits
 
-Automatic Cubacel response extraction and encrypted history persistence are **not implemented**. USSD responses can be viewed directly, and confirmed values can be entered manually. Standard Android subscription APIs expose SIM metadata, not prepaid balances or remaining carrier allowances. Future work needs a supported carrier API or an explicitly authorized carrier-specific integration. No sample amounts are presented as real data.
+Carrier response formats vary. Unknown, promotional, invalid or ambiguous responses are rejected;
+they never replace the last valid reading with guessed numbers. Parser coverage is documented in
+[the architecture notes](docs/ANDROID_ARCHITECTURE.md) and verified by automated fixtures.
+The app receives its own USSD callbacks and, when explicitly enabled, imports supported messages
+from fixed Cubacel/ETECSA sender addresses. It does not intercept the dialer's sessions. SMS
+permissions must be granted on Android; USSD remains usable without SMS access.
 
-## Run
+Storage is encrypted at the payload level, rather than full-file SQLite encryption. Random row
+IDs, row count and SQLite structure remain visible. No raw responses or hardware subscriber
+identifiers are stored. Android subscription IDs are local routing metadata; when replacing a SIM,
+clear its local history to avoid associating a reused subscription record with old readings.
 
-1. Open this repository in Android Studio.
-2. Install Android SDK Platform 36 and use JDK 17.
-3. Let Gradle sync, then run the `app` configuration on a device or emulator.
+## Build and run
 
-For command-line builds, set `ANDROID_HOME` to your Android SDK directory (or set `sdk.dir` in an untracked `local.properties`):
+Use JDK 17 and Android SDK Platform 36. Open the repository in Android Studio, or set
+`ANDROID_HOME` to your SDK and run:
 
 ```sh
-./gradlew assembleDebug
-./gradlew lintDebug
-./gradlew installDebug
+./gradlew assembleDebug testDebugUnitTest lintDebug
+./gradlew assembleDebugAndroidTest
 ```
 
-Debug APK: `app/build/outputs/apk/debug/app-debug.apk`.
+Minimum Android: API 26. APK: `app/build/outputs/apk/debug/app-debug.apk`.
+Install with `adb -s <device> install -r app/build/outputs/apk/debug/app-debug.apk`.
+Never run carrier queries on an emulator expecting real balances.
 
-## Structure
+The instrumentation test validates parser-to-database persistence, reopening, separate SIM data,
+encrypted payloads, and deletion. Run it on a dedicated emulator:
 
-- `app/src/main/java/com/simple/mobile/MainActivity.java`: dashboard and permission flow.
-- `app/src/main/java/com/simple/mobile/data/SimRepository.java`: device subscription access.
-- `app/src/main/res/`: text, theme, and launcher artwork.
-- `app/build.gradle.kts`: application ID, SDK levels, and release configuration.
+```sh
+adb -s <emulator> install -r app/build/outputs/apk/debug/app-debug.apk
+adb -s <emulator> install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+adb -s <emulator> shell am instrument -w com.simple.mobile.test/androidx.test.runner.AndroidJUnitRunner
+```
 
-The starter application ID is `com.simple.mobile`; choose your own unique ID before publishing. Release signing is intentionally left to your own keystore configuration.
+## Source layout
 
-## Device verification
+- `presentation/`: Compose screens, state and Android ViewModel.
+- `domain/model/`: immutable typed readings and domain models.
+- `data/parser/CubacelParser.java`: bounded carrier grammars and validation.
+- `data/telephony/UssdDispatcher.java`: single-flight, subscription-scoped callbacks.
+- `data/local/EncryptedReadingStore.kt`: encrypted typed SQLite history.
 
-On a physical phone, verify permission grant and denial, return from app settings, no active SIM, and multiple active SIMs where supported. An emulator usually has no active subscriptions. Rotate the device and increase system font size to check the scrollable layout.
+[Verified carrier codes and sources](docs/CUBACEL_CODES.md).
 
-## Platform references
+## SMS synchronization
 
-- [Android Gradle Plugin 8.11 compatibility](https://developer.android.com/build/releases/agp-8-11-0-release-notes)
-- [Android subscription API](https://developer.android.com/reference/android/telephony/SubscriptionManager)
+Tap **Conectar mensajes de saldo** and allow the Android SMS permission request. The app queries
+only ETECSA/Cubacel/222/2266 senders (latest 150), matches each message to an active Cubacel
+subscription, parses on-device, and saves typed values. New carrier messages use the same parser.
+Purchase receipts store purchased quotas separately from measured remaining allowances; a debit,
+transfer or credited recharge is never substituted for the current balance. Promotions are rejected.
+
+Disable SMS ingestion in Settings. Deleting local history also disables automatic SMS import to
+avoid immediately repopulating deleted history. Existing inbox messages themselves are never changed.
+For Play Store distribution, READ_SMS/RECEIVE_SMS eligibility and restricted-permission rules must
+be reviewed; sideload availability does not imply Play eligibility.
+
+The recharge parser distinguishes a reached limit from available credit, and treats
+“posterior al día D” as available from the following day in Havana time. It never uses
+line/package expiry as the recharge date. If the stated date has passed, the card asks
+for a fresh query before claiming capacity is available.
+
+Live modem diagnostics are excluded from normal test runs. `LiveUssdProbeTest` requires
+explicit `liveCubacel=true`, a subscription ID and an optional enum query list. It accepts
+only the read-only catalog, stops on modem failure, never retries, and emits numerically
+redacted formats. Run only with the device owner's explicit authorization.

@@ -51,17 +51,20 @@ These change account state or enter interactive services; they are not balance c
 Do not execute them as refresh requests. No transfer PINs, vouchers, device identity
 queries, or SMS capability checks are collected by this feature.
 
-## Response integration remains separate
+## Automatic response integration
 
-Publishing a query code does not document its exact response grammar. The English
-`ExampleCarrierParser` is a synthetic example, not a Cubacel parser. Do not wire it to
-these commands in a production UI. The current dashboard displays the operator response
-in a transient protected dialog and supports explicitly labelled manual readings. Cubacel needs command-specific, redacted Spanish
-response fixtures before trustworthy extraction of amounts, bundles, dates and SMS
-counts. In particular, recharge-limit and SMS responses need result types beyond the
-current `BalanceSnapshot`; never force their numeric values into money or data fields.
+The Kotlin/Compose dashboard parses native USSD callbacks with `CubacelParser` and saves
+recognized typed readings automatically in encrypted local SQLite history. There are no
+manual balance-entry forms. The earlier English `ExampleCarrierParser` is retained only as
+an example and is not used by the dashboard.
 
-Use `America/Havana` for a future Cubacel parser's local dates, respecting daylight
-saving time. Distinguish line validity, balance validity and each bundle's expiry;
-USD plan labels do not mean that the main balance is denominated in USD. No live SIM
-query has been executed in this development environment.
+The production parser supports explicit Spanish balance labels, CUP/MN, decimal MB/GB/KB,
+minutes/seconds, SMS, full-year expiry dates, separate restricted data buckets, and labelled
+recharge-limit fields. Unsupported or ambiguous replies preserve the previous reading.
+Promotions are rejected. Test fixtures are synthetic grammar examples, not a claim that all
+current Cubacel response variants have been observed on a live SIM.
+
+Use `America/Havana` for carrier-local dates. Keep line validity, plan expiry, bonus resources
+and recharge capacity separate. Optional sender-filtered SMS synchronization is implemented with explicit Android permissions.
+Purchase, transfer and recharge SMS structures observed on the authorized test phone are covered
+by redacted fixtures; promotional SMS never become balances. Native USSD remains a separate transport.

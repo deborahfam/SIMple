@@ -1,199 +1,117 @@
-# SIMple Android foundation
+# Android architecture
 
-## Stack and boundaries
+## Implementation
 
-Recommend Kotlin, Jetpack Compose, coroutines/Flow, Room and MVVM for the product.
-The repository currently uses native Java 17 and framework Views. This increment keeps
-that stack buildable and provides interoperable domain types and a CompletableFuture
-query adapter. It does not claim a completed Kotlin migration, ViewModel, or database.
+The presentation layer uses Kotlin, Jetpack Compose Material 3 and an Android ViewModel.
+The ViewModel exposes immutable state through StateFlow. UI collection follows lifecycle;
+queries survive rotation. A shared application-scoped storage worker serializes SMS and USSD writes; StateFlow publishes updated history to the ViewModel. The domain remains Android-free and interoperates through Java records.
+Data adapters own telephony, parsing and encrypted SQLite. Parsing and database I/O run on a
+single background worker, never the UI thread.
 
-Use these package boundaries (single Gradle app module initially):
+Flow: selected SIM → permission → verified query enum → native USSD callback → command-specific
+parser → encrypted transaction → reloaded typed history → dashboard. The UI has no manual-entry
+path. A parse/network/storage error preserves the previous successful state.
 
-```text
-com.simple.mobile/
-  domain/
-    model/           SimAccount, BalanceSnapshot, DataPlanBundle
-    query/           CarrierResponseParser
-    repository/      planned: SnapshotRepository contract
-    usecase/         planned: CheckBalance, ObserveHistory, EstimateDepletion
-  data/
-    telephony/       UssdDispatcher
-    parser/          versioned, carrier-specific parsers
-    local/           planned: Room entities, DAOs, migrations, encrypted DB factory
-    repository/      planned: repository implementations
-    SimRepository    active subscription metadata adapter
-  presentation/      planned: dashboard ViewModel, immutable UI state, Compose UI
-  MainActivity       current framework-Views dashboard
-```
+## Permissions and device routing
 
-Domain must not depend on Android, Room, or UI. Data implements domain contracts;
-presentation depends on use cases. Supply one application-scoped dispatcher and an
-owned background executor through dependency injection. Do not retain an Activity.
+`READ_PHONE_STATE` discovers subscriptions and per-SIM metadata. `CALL_PHONE` executes USSD.
+The UI requests these permissions; the dispatcher rechecks them and verifies the active
+subscription immediately before sending. Only Cubacel SIM operator `36801` is accepted.
+No IMSI, ICCID, IMEI or phone number is collected.
 
-## Permissions and platform behavior
+One application-scoped dispatcher permits a single modem session across both SIMs. A local
+30-second timeout does not cancel the modem session. The gate stays closed until the native
+callback arrives; no automatic retries, SIM switching or hidden fallback calls are made.
+The adapter receives only its own one-shot requests, not dialer sessions or interactive menus.
 
-- `READ_PHONE_STATE`: runtime permission for active subscriptions and per-subscription
-  network metadata. Already requested by the dashboard.
-- `CALL_PHONE`: runtime permission for `sendUssdRequest`. Declared now, but request it
-  in the future query UI only after the user chooses a SIM and confirms the query.
-  The dispatcher returns `PERMISSION` until granted; it never prompts from data code.
-- `READ_SMS`, `RECEIVE_SMS`, `SEND_SMS`: not included. Google Play restricts these
-  permissions to eligible default handlers or approved exceptions. A balance tracker
-  must not assume eligibility. Start with user-pasted/shared carrier text, parsed
-  locally with a source-specific parser. SMS Retriever is not a general inbox reader.
-- No `READ_PHONE_NUMBERS`, location, contacts, call-log, storage, accessibility service,
-  or Internet permission is needed for the supplied foundation.
-- Telephony hardware is optional. Discover active subscriptions using
-  `SubscriptionManager`; route every query through `createForSubscriptionId`.
-  Refresh on resume, and eventually observe subscription changes while the UI is active.
-  Subscription ID and slot are mutable routing metadata, not durable SIM identity.
-- `SimRepository.accounts` adds carrier, current data radio technology and SIM state.
-  Network type can be unknown; this is not a measurement of speed. Active subscription
-  enumeration alone cannot enumerate every absent/locked SIM. Observe physical slot
-  state separately if the UI needs to display empty/locked slots.
-- API 26+ supplies asynchronous USSD callbacks. Carrier and OEM support varies. This
-  is a one-shot request API, not an API for driving arbitrary interactive USSD menus,
-  intercepting the dialer's sessions, or reading an SMS delivered later.
+SMS synchronization is optional and asks Android for READ_SMS/RECEIVE_SMS permission.
+The content-provider query restricts senders before loading bodies, caps imports at 150 recent
+messages, validates a currently active Cubacel subscription, and rejects unknown SIM associations.
+The protected SMS_RECEIVED broadcast handles future messages only while the feature is enabled.
+Multipart messages are joined in memory. Carrier sender names are not cryptographic proof of
+origin; no parsed SMS ever triggers a purchase, transfer or call. Promotions are rejected.
+No accessibility service, notification scraping, outgoing SMS or default-SMS-role takeover is used.
+Play distribution requires separate SMS-permission eligibility review. If Android denies SMS
+permission, the app explains the limitation and retains USSD functionality.
 
-## Models
+## Parser contract
 
-`SimAccount`: app-generated UUID for local history, current subscription ID and slot,
-carrier label, optional explicitly selected carrier profile, SIM state, and data
-network type. Never infer a carrier query code from display name alone, especially
-when roaming or using MVNOs. Ask the user to associate a newly detected SIM with history.
+`CarrierReading` carries query type, received timestamp, optional balance in CUP, voice seconds,
+SMS count, separate data buckets, optional expiry and separate recharge-limit fields. Unknown
+is null, distinct from zero and unlimited. A query result only replaces the same query category;
+bonus resources never overwrite the main balance or general Internet quota.
 
-`BalanceSnapshot`: immutable local snapshot UUID, account UUID, received timestamp,
-optional decimal money plus ISO currency, optional remaining voice seconds, optional
-balance expiry, immutable bundles, source, and parser version. Unknown is null, never
-zero. A negative monetary balance can represent carrier debt; a profile controls that
-interpretation. No raw response, phone number, IMSI, ICCID, or IMEI is stored.
+The bounded Spanish parser normalizes accents and Unicode spacing, validates explicit units and
+currency, uses exact decimal arithmetic, and rejects duplicate/ambiguous buckets. MB/GB are decimal
+units. Dot and comma decimal forms are supported; mixed grouping formats are rejected. Main money
+requires a balance label plus CUP/MN, rejecting legacy CUC. Dates accept validated DMY/ISO forms, including the observed two-digit Cubacel years (mapped to 2000–2099) and become an exclusive next-day instant in `America/Havana`, including DST.
+National, LTE, night, mail, toDus, WhatsApp and Facebook data stay separate. Promotion and error
+messages are rejected, not imported as purchased allowances. Conflicting or unknown unlimited
+restrictions also fail parsing rather than falsely displaying unrestricted data.
 
-`DataPlanBundle`: carrier-profile bundle key, display name, optional remaining and total
-bytes, explicit unlimited flag, and optional expiry instant. Bundles stay separate:
-social-only, night-only, rollover and main quota must not be summed indiscriminately.
-The sample parser uses decimal MB/GB; other profiles must explicitly choose decimal or
-binary units. Carrier-local inclusive expiry dates become exclusive next-day instants.
+USSD fixtures are synthetic; SMS receipt fixtures reproduce structures observed on the user-authorized device, with invented amounts and redacted numbers. The carrier's website publishes query codes, not an exhaustive grammar. Do not claim every Cubacel format is
+supported until it has been observed and tested. Raw carrier text is held transiently in memory
+and is never persisted, added to exception messages or sent to telemetry. JVM strings cannot be
+reliably wiped. The app has no network permission.
 
-## Query and parsing flow
+## Persistence and privacy
 
-1. UI selects a currently active subscription and a reviewed, read-only carrier query.
-   Explain any carrier charges before dispatch. Never run arbitrary response-supplied
-   codes or silently execute top-ups, purchases, transfers, or subscription changes.
-2. Request permissions in presentation. Call the application-scoped `UssdDispatcher`
-   with the account UUID, current subscription ID, verified `CubacelQuery` enum value and a response-specific parser.
-3. Dispatcher rechecks permissions and active subscriptions immediately before sending.
-   Busy requests fail rather than queueing stale intents across both SIMs.
-4. Android callback supplies a response; the executor parses it off the main thread.
-   The future yields a typed snapshot or a sanitized failure, without raw text in errors.
-5. Persist only accepted typed snapshots in one transaction. Update ViewModel state;
-   deliver UI changes on the main thread. Display last successful check time and stale
-   status rather than claiming continuous real-time monitoring.
+`EncryptedReadingStore` stores only random row IDs, random IVs and AES-GCM ciphertext in SQLite.
+The authenticated payload contains only typed values, a parser version and local subscription
+routing ID. Each row ID is authenticated as AAD to detect payload swapping. Keys are generated
+and retained by Android Keystore. This is payload encryption, not whole-database SQLCipher;
+row counts, SQLite structure and opaque IDs remain visible. SMS event IDs derive from subscription, timestamp and an ephemeral body digest for idempotence; the body itself is never saved. The schema and key alias are versioned.
+No destructive migration or silent reset occurs on an unreadable key/database.
 
-A 30-second local timeout completes the future but does not cancel the modem operation.
-Cancelling the future also cannot stop it. Dispatch remains blocked until Android's
-callback arrives. If it never arrives, show an unresolved-session state and require
-user recovery; do not clear the gate and automatically retry. This conservative gate
-is in-process only, so process death still requires an explicit user-driven next check.
-No automatic retries: USSD can incur charges or change account state.
-
-`ExampleCarrierParser` is intentionally a strict, synthetic English profile. It accepts:
-
-```text
-Balance: USD 12.50; Data: 1.25 GB; Minutes: 30; Expires: 2026-12-01
-```
-
-It normalizes Unicode and spacing, caps input size, anchors the complete response,
-uses bounded numeric patterns, exact decimal arithmetic, explicit units and currency,
-and validates dates. Unrecognized/ambiguous text produces a parse failure, never a
-fabricated zero or a partially trusted snapshot. The Cubacel command catalog is verified, but its production response parsers are not implemented
-yet; see [Cubacel codes](CUBACEL_CODES.md). Add one parser version per carrier/locale/response variant, with redacted fixtures
-for missing fields, menu/error replies, multiple bundles, grouping and decimal separators,
-translations, expiry zones and changed wording. Do not run a generic “find all numbers”
-regex. Raw text is ephemeral in memory, including framework callback arguments; JVM
-strings cannot be reliably wiped. Never send these values to logs or crash reporting.
-
-## Local schema and encryption plan
-
-Persistence is a design here, not an implemented encrypted database. Room alone does
-not encrypt SQLite. Use a maintained encrypted SQLite provider compatible with Room,
-with a random database key wrapped by an Android Keystore key. Do not hardcode keys or
-store a plaintext database passphrase in preferences. Treat lost/invalidated keys as
-an explicit recovery/reset state. Disable backup/transfer of database and keys.
-
-Proposed schema:
-
-```sql
-CREATE TABLE sim_account (
-  id TEXT PRIMARY KEY NOT NULL,
-  label TEXT NOT NULL,
-  carrier_profile_id TEXT
-);
-CREATE TABLE balance_snapshot (
-  id TEXT PRIMARY KEY NOT NULL,
-  account_id TEXT NOT NULL REFERENCES sim_account(id) ON DELETE CASCADE,
-  captured_at_ms INTEGER NOT NULL,
-  money_decimal TEXT,
-  currency_iso TEXT,
-  voice_seconds INTEGER CHECK(voice_seconds >= 0),
-  balance_expires_at_ms INTEGER,
-  source TEXT NOT NULL,
-  parser_version TEXT NOT NULL,
-  CHECK ((money_decimal IS NULL) = (currency_iso IS NULL))
-);
-CREATE INDEX snapshot_account_time ON balance_snapshot(account_id, captured_at_ms);
-CREATE TABLE data_bundle (
-  snapshot_id TEXT NOT NULL REFERENCES balance_snapshot(id) ON DELETE CASCADE,
-  bundle_key TEXT NOT NULL,
-  display_name TEXT NOT NULL,
-  remaining_bytes INTEGER CHECK(remaining_bytes >= 0),
-  total_bytes INTEGER CHECK(total_bytes >= 0),
-  unlimited INTEGER NOT NULL CHECK(unlimited IN (0,1)),
-  expires_at_ms INTEGER,
-  PRIMARY KEY(snapshot_id, bundle_key),
-  CHECK(remaining_bytes IS NULL OR total_bytes IS NULL OR remaining_bytes <= total_bytes),
-  CHECK(unlimited = 0 OR (remaining_bytes IS NULL AND total_bytes IS NULL))
-);
-```
-
-Enable foreign keys, use transactional inserts and tested migrations, and bound retention
-(e.g. user-configurable 90 days). Do not persist subscription IDs as account identity.
-Add a cycle identifier before implementing consumption estimation: two snapshots from
-separate renewals must never be treated as one continuous quota. Export/delete actions
-must be explicit and on-device. No analytics or identifier collection.
-
-## Burn rate and forecast
-
-Within a confirmed bundle and billing cycle, compute positive quota reductions over
-valid consecutive intervals, divided by the total interval duration in days. Exclude
-resets, top-ups, bundle changes, expired bundles and unknown/unlimited readings; a quota
-increase starts a new segment rather than becoming negative consumption. Require at
-least two distinct timestamped readings. Label the result an estimate: purchases and
-carrier corrections can also change allowances.
-
-Estimated depletion = latest capture time + remaining bytes / bytes-per-day, only for
-a positive rate and a sufficiently recent reading. Zero rate or insufficient history
-means no estimate. Keep contractual expiry separate and display the earlier of known
-contract expiry and estimated depletion as the effective forecast. Never overwrite
-carrier expiry with an estimate. Snapshot-based estimates are not live traffic counters.
+Latest state is derived per subscription and query category. History is bounded to 300 total
+snapshots; inserts and retention pruning are transactional. Backup and device-transfer rules
+exclude database/root/preferences, and backup is disabled. Deleting history requires confirmation.
+Subscription IDs can change or be reused; the app does not claim they are durable SIM identities.
+After a physical SIM replacement, clear the old local history. A future account-association flow
+can improve this without reading subscriber identifiers.
 
 ## Validation
 
-Run `./gradlew assembleDebug lintDebug`. Parser checks can run without Android:
+`CubacelParserTest`: amounts, comma decimals, zero, minutes/seconds, SMS, separate restricted
+buckets, unlimited resources, expiry, recharge limits, promotions, errors, malformed inputs.
+`EncryptedStoreTest`: recognized response → encrypted SQLite → close/reopen → typed reading,
+SIM separation, ciphertext inspection, and deletion. This test runs on a dedicated emulator only.
 
-```sh
-mkdir -p /tmp/simple-parser-tests
-javac -d /tmp/simple-parser-tests app/src/main/java/com/simple/mobile/domain/model/*.java app/src/main/java/com/simple/mobile/domain/query/*.java app/src/main/java/com/simple/mobile/data/parser/*.java tests/CarrierParserTest.java
-java -cp /tmp/simple-parser-tests CarrierParserTest
-```
+Remaining device checks include actual Cubacel response variants, modem timeout/late callbacks,
+permissions revoked mid-session, SIM replacement and carrier-specific sender/subscription metadata on older SMS records. Burn-rate estimation remains future work; no unvalidated forecast is shown.
 
-Device validation still required: two active SIMs, permission revocation during a query,
-SIM removal/swap, unsupported USSD, no service, timeout/late callback, cancellation,
-interactive menu responses, process recreation and executor shutdown. Do not use real
-subscriber identifiers or raw responses in test reports.
-
-## Platform sources
-
-- https://developer.android.com/reference/android/telephony/TelephonyManager#sendUssdRequest(java.lang.String,android.telephony.TelephonyManager.UssdResponseCallback,android.os.Handler)
-- https://developer.android.com/reference/android/telephony/SubscriptionManager
+Sources:
+- https://developer.android.com/develop/ui/compose/setup-compose-dependencies-and-compiler
+- https://developer.android.com/reference/android/telephony/TelephonyManager
 - https://developer.android.com/guide/topics/permissions/default-handlers
-- https://support.google.com/googleplay/android-developer/answer/10208820
+- https://www.itu.int/dms_pub/itu-t/opb/sp/T-SP-E.212B-2023-PDF-S.pdf
+
+### Observed SMS receipt semantics
+
+- Current ETECSA plan receipts: parse `Saldo actual`, not `Se desconto`; save bought data/minutes/SMS
+  and first-use validity as a purchase, not as an up-to-date remaining allowance.
+- Older `Ha comprado un plan...` and `Ha recibido Plan...` variants: preserve separately labelled
+  general/LTE purchase totals. Unlabelled monetary amounts before 2021 are not assumed to be CUP.
+- Transfer notices: parse `Saldo principal` separately from the transferred amount; keep the
+  active-until date and final line-closure date distinct.
+- Recharge acknowledgements: record credited CUP without guessing the resulting total balance.
+- Failed transfers, credit advertisements and promotion announcements do not update readings.
+
+The database is sorted by carrier receipt timestamp, so importing an older SMS does not replace
+a newer measured balance. Event IDs make repeated imports idempotent. Source (SMS/USSD), purchase
+metadata and dates survive encryption/reopening. Deleting history disables automatic import.
+
+### Live USSD formats and recharge reopening
+
+Authorized testing on the phone confirmed the summary grammar `Saldo`, `Datos`, `Voz` as
+HH:MM:SS, prefix-labelled SMS, separate active-until/closure dates, `Datos.cu` with short-year
+expiry, and the national-recharge limit response. The parser converts the full voice clock;
+it does not mistake its final segment for a count of minutes. Restricted `.cu` data remains
+separate from general Internet.
+
+`nextRechargeAt` stores the first eligible instant independently of line and bundle expiry.
+“Ha alcanzado el monto ...” means available capacity is zero, never the amount of the limit.
+“Posterior al día D” starts at midnight of D+1 in America/Havana; “a partir del día D” starts
+on D. A passed date prompts rechecking rather than asserting that capacity has been restored.
+The UI shows last-query time and a dedicated refresh button. Known-invalid v1 clock/recharge
+interpretations are not presented; their ciphertext is retained until normal retention pruning.
