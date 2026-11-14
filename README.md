@@ -176,3 +176,10 @@ A private repository or one without a public stable release returns a helpful un
 The repository source itself is not installable: it must first be built into a signed APK. The
 initial version containing the updater must be installed manually. Android may require allowing
 this app to install packages: [Android package installation permission](https://developer.android.com/reference/android/content/pm/PackageManager#canRequestPackageInstalls()).
+
+## Compact dashboard (0.4.0)
+
+Home prioritizes the selected SIM, balance and four resource tiles. Refresh all lives inside the
+balance card; the smaller refresh icon queries only balance. Line renaming and deletion are in
+Settings. SMS connection is summarized on Home with a link to Settings, and package breakdowns
+expand on demand. Query progress, expiry warnings and damaged-reading notices remain visible.
