@@ -9,6 +9,7 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.launch
 import com.simple.mobile.SimpleApplication
 import com.simple.mobile.data.SimRepository
+import com.simple.mobile.data.telephony.SmsSyncStatus
 import com.simple.mobile.data.local.EncryptedReadingStore
 import com.simple.mobile.data.parser.CubacelParser
 import com.simple.mobile.data.telephony.UssdDispatcher
@@ -38,6 +39,7 @@ data class DashboardState(
     val storageReady: Boolean = false,
     val activeQuery: CubacelQuery? = null, val queryNumber: Int = 0, val queryTotal: Int = 0,
     val querySubscription: Int = -1, val stopRequested: Boolean = false,
+    val smsStatus: SmsSyncStatus = SmsSyncStatus(), val smsReadAllowed: Boolean = false, val smsReceiveAllowed: Boolean = false,
     val nicknames: Map<Int, String> = emptyMap(), val managingLine: Boolean = false,
     val remindersEnabled: Boolean = false, val notificationsAllowed: Boolean = false
  ) {
@@ -56,6 +58,7 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
     @Volatile private var disposed = false
     init {
         loadHistory()
+        viewModelScope.launch { app.smsImport.state.collect { status -> mutable.update { it.copy(smsStatus = status) } } }
         viewModelScope.launch { app.readings.collect { values -> mutable.update { old -> old.copy(entries = values).let { it.copy(selected = LineCatalog.selection(old.selected, it.displayLines)) } } } }
     }
     fun refreshLines() {
@@ -87,14 +90,39 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
     fun retryStorage() { loadHistory() }
+    fun refreshSmsPermissions() {
+        mutable.update { it.copy(
+            smsReadAllowed = app.checkSelfPermission(Manifest.permission.READ_SMS) == PackageManager.PERMISSION_GRANTED,
+            smsReceiveAllowed = app.checkSelfPermission(Manifest.permission.RECEIVE_SMS) == PackageManager.PERMISSION_GRANTED) }
+    }
+    fun enableSms() {
+        refreshSmsPermissions()
+        if (!mutable.value.permission || !mutable.value.smsReadAllowed || !mutable.value.smsReceiveAllowed) {
+            notify("Faltan permisos para conectar la importación automática de SMS. Revísalos en Ajustes.")
+            return
+        }
+        app.smsImport.setEnabled(true)
+        syncCarrierSms()
+    }
     fun syncCarrierSms(showMessage: Boolean = true) {
+        if (mutable.value.managingLine) return
+        val token = app.smsImport.beginSync() ?: return
         worker.execute {
+            var count = 0
+            var error: String? = null
             try {
-                val count = com.simple.mobile.data.telephony.CarrierSmsSync.syncInbox(app)
+                count = com.simple.mobile.data.telephony.CarrierSmsSync.syncInbox(app, token)
                 app.refreshReadings()
-                if (!disposed && showMessage) notify("Sincronización terminada: $count lecturas reconocidas. Los anuncios no se importan.")
-            } catch (_: SecurityException) { if (!disposed) notify("Permite acceso a SMS para sincronizar los mensajes de Cubacel.") }
-            catch (_: Exception) { if (!disposed) notify("No se pudieron sincronizar los SMS. Los datos guardados se conservan.") }
+                if (!disposed && showMessage && app.smsImport.isCurrent(token)) notify("Sincronización terminada: $count lecturas nuevas añadidas.")
+            } catch (_: SecurityException) { error = "Faltan permisos para sincronizar los SMS. Revisa los permisos en Android." }
+            catch (_: Exception) { error = "No se pudo completar la sincronización. Las lecturas guardadas se conservan." }
+            finally {
+                app.smsImport.finishSync(token, count, error)
+                if (!disposed) {
+                    refreshSmsPermissions()
+                    if (error != null && showMessage && app.smsImport.isCurrent(token)) notify(error!!)
+                }
+            }
         }
     }
     fun check(query: CubacelQuery) = startQueries(listOf(query))
@@ -165,7 +193,7 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
         refreshReminderSettings()
     }
     fun disableSms() {
-        app.getSharedPreferences("features", android.content.Context.MODE_PRIVATE).edit().putBoolean("carrier_sms", false).apply()
+        app.smsImport.setEnabled(false)
         notify("Importación automática de SMS desactivada. Tus lecturas guardadas se conservan.")
     }
     fun renameLine(subscription: Int, nickname: String) {
@@ -183,10 +211,11 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
     fun clearHistory(subscription: Int? = null) {
         if (mutable.value.busy || mutable.value.managingLine) { notify("Espera a que termine la consulta antes de borrar datos."); return }
         mutable.update { it.copy(managingLine = true) }
-        app.getSharedPreferences("features", android.content.Context.MODE_PRIVATE).edit().putBoolean("carrier_sms", false).apply()
+        app.smsImport.setEnabled(false)
         worker.execute {
             try {
                 store.clear(subscription)
+                app.smsImport.clearSummary()
                 app.refreshReadings()
                 val names = store.nicknames()
                 if (!disposed) mutable.update { it.copy(nicknames = names, storageReady = true,

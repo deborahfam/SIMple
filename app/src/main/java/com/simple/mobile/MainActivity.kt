@@ -24,11 +24,9 @@ class MainActivity : ComponentActivity() {
             else "Puedes ver tus lecturas guardadas. Para consultar, permite teléfono y llamadas en Ajustes.")
     }
     private val smsPermissions = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
-        if (checkSelfPermission(Manifest.permission.READ_SMS) == PackageManager.PERMISSION_GRANTED) {
-            getSharedPreferences("features", MODE_PRIVATE).edit().putBoolean("carrier_sms", true).apply()
-            model.refreshLines()
-            model.syncCarrierSms()
-        } else model.notify("Android no permitió leer los SMS. Las consultas USSD siguen disponibles. Puedes revisar los permisos en Ajustes.")
+        model.refreshLines()
+        model.refreshSmsPermissions()
+        model.enableSms()
     }
     private val notificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         model.setReminders(granted)
@@ -59,7 +57,11 @@ class MainActivity : ComponentActivity() {
                     else model.setReminders(true)
                 },
                 onNotificationSettings = { open(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, packageName)) },
-                onSyncSms = { smsPermissions.launch(arrayOf(Manifest.permission.READ_PHONE_STATE, Manifest.permission.READ_SMS, Manifest.permission.RECEIVE_SMS)) },
+                onSmsEnabled = { enabled ->
+                    if (!enabled) model.disableSms()
+                    else smsPermissions.launch(arrayOf(Manifest.permission.READ_PHONE_STATE, Manifest.permission.READ_SMS, Manifest.permission.RECEIVE_SMS))
+                },
+                onSyncSms = { model.syncCarrierSms() },
                 onSettings = { open(Intent(Settings.ACTION_WIRELESS_SETTINGS)) },
                 onAppSettings = { open(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName"))) },
                 onDial = { code -> open(Intent(Intent.ACTION_DIAL, Uri.fromParts("tel", code, null))) },
@@ -71,8 +73,9 @@ class MainActivity : ComponentActivity() {
         if (::model.isInitialized) {
             model.refreshLines()
             model.refreshReminderSettings()
+            model.refreshSmsPermissions()
             selectReminderLine(intent)
-            if (getSharedPreferences("features", MODE_PRIVATE).getBoolean("carrier_sms", false) &&
+            if ((application as SimpleApplication).smsImport.state.value.enabled &&
                 checkSelfPermission(Manifest.permission.READ_SMS) == PackageManager.PERMISSION_GRANTED) model.syncCarrierSms(false)
         }
     }

@@ -67,7 +67,7 @@ class EncryptedReadingStore(context: Context, name: String = "readings.db") : SQ
                 .setBlockModes(KeyProperties.BLOCK_MODE_GCM).setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE).build())
         }.generateKey()
     }
-    @Synchronized fun save(subscription: Int, reading: CarrierReading, eventId: String? = null) {
+    @Synchronized fun save(subscription: Int, reading: CarrierReading, eventId: String? = null): Boolean {
         val id = eventId?.let { UUID.nameUUIDFromBytes(it.toByteArray()).toString() } ?: UUID.randomUUID().toString()
         val json = JSONObject().put("subscription", subscription).put("query", reading.query().name)
             .put("at", reading.receivedAt()).put("balance", reading.balanceCup()).put("voice", reading.voiceSeconds() as Any?)
@@ -88,9 +88,14 @@ class EncryptedReadingStore(context: Context, name: String = "readings.db") : SQ
         val values = ContentValues().apply { put("id", id); put("iv", cipher.iv); put("payload", encrypted) }
         writableDatabase.beginTransaction()
         try {
-            writableDatabase.insertWithOnConflict("readings", null, values, SQLiteDatabase.CONFLICT_IGNORE).also { if (it == -1L && eventId == null) error("Insert failed") }
+            val inserted = writableDatabase.insertWithOnConflict("readings", null, values, SQLiteDatabase.CONFLICT_IGNORE) != -1L
+            if (!inserted) {
+                val duplicate = eventId != null && writableDatabase.rawQuery("SELECT 1 FROM readings WHERE id=?", arrayOf(id)).use { it.moveToFirst() }
+                check(duplicate) { "Insert failed" }
+            }
             writableDatabase.execSQL("DELETE FROM readings WHERE rowid NOT IN (SELECT rowid FROM readings ORDER BY rowid DESC LIMIT 300)")
             writableDatabase.setTransactionSuccessful()
+            return inserted
         } finally { writableDatabase.endTransaction() }
     }
     @Synchronized fun history(): List<Entry> {

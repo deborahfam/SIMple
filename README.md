@@ -70,7 +70,7 @@ adb -s <emulator> shell am instrument -w com.simple.mobile.test/androidx.test.ru
 
 ## SMS synchronization
 
-Tap **Conectar mensajes de saldo** and allow the Android SMS permission request. The app queries
+Enable the switch in **Mensajes de Cubacel** and allow the Android SMS permission request. The app queries
 only ETECSA/Cubacel/222/2266 senders (latest 150), matches each message to an active Cubacel
 subscription, parses on-device, and saves typed values. New carrier messages use the same parser.
 Purchase receipts store purchased quotas separately from measured remaining allowances; a debit,
@@ -126,3 +126,7 @@ Other lines are preserved. The global deletion action remains in Settings. Both 
 import to prevent immediate repopulation; explicitly reconnecting SMS can import inbox history again.
 Deletion is unavailable during a USSD query. Database version 2 adds encrypted nickname storage
 without rewriting existing readings.
+
+The SMS panel shows connection and permission status, last successful sync time, and newly inserted
+readings (duplicates excluded). Turning import off invalidates queued work. Failed syncs preserve
+the last successful summary. **Sincronizar ahora** is available when import and read permissions are enabled.

@@ -10,6 +10,7 @@ class SimpleApplication : Application() {
     val worker = Executors.newSingleThreadExecutor()
     val store by lazy { EncryptedReadingStore(this) }
     val readings = MutableStateFlow<List<EncryptedReadingStore.Entry>>(emptyList())
+    val smsImport by lazy { com.simple.mobile.data.telephony.SmsImportSettings(this) }
     val reminders by lazy { com.simple.mobile.data.reminders.LocalReminders(this) }
     private val ussd by lazy { UssdDispatcher(this, worker) }
     fun dispatcher() = ussd

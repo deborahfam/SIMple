@@ -42,7 +42,7 @@ private val Teal = Color(0xFF7353B6)
 private val Navy = Color(0xFF35234F)
 
 @Composable fun Dashboard(model: DashboardViewModel, onConnect: () -> Unit,
-    onQuery: (CubacelQuery) -> Unit, onRefreshAll: () -> Unit, onReminders: (Boolean) -> Unit, onNotificationSettings: () -> Unit, onSyncSms: () -> Unit, onSettings: () -> Unit, onAppSettings: () -> Unit,
+    onQuery: (CubacelQuery) -> Unit, onRefreshAll: () -> Unit, onReminders: (Boolean) -> Unit, onNotificationSettings: () -> Unit, onSmsEnabled: (Boolean) -> Unit, onSyncSms: () -> Unit, onSettings: () -> Unit, onAppSettings: () -> Unit,
     onDial: (String) -> Unit, onRechargeSite: () -> Unit) {
     val state by model.state.collectAsStateWithLifecycle()
     val now by produceState(System.currentTimeMillis()) {
@@ -212,19 +212,7 @@ private val Navy = Color(0xFF35234F)
                                 onQuery(CubacelQuery.RECHARGE_STATUS)
                             }
                         }
-                        item {
-                            Surface(onClick = onSyncSms, color = Color(0xFFEEE8F7), shape = RoundedCornerShape(16.dp)) {
-                                Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Outlined.MarkEmailRead, null, tint = Teal)
-                                    Spacer(Modifier.width(12.dp))
-                                    Column(Modifier.weight(1f)) {
-                                        Text("Conectar mensajes de saldo", fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                                        Text("Importación automática de SMS Cubacel", fontSize = 10.sp, color = Muted)
-                                    }
-                                    Icon(Icons.Outlined.ChevronRight, null, tint = Teal)
-                                }
-                            }
-                        }
+                        item { SmsConnectionCard(state, onSmsEnabled, onSyncSms, onAppSettings) }
                         val purchased = entries.firstOrNull { it.reading.purchase() != null }?.reading
                         if (purchased != null) item {
                             val plan = purchased.purchase()!!
@@ -298,10 +286,9 @@ private val Navy = Color(0xFF35234F)
                                 SettingsRow("Actualizar tarjetas SIM", Icons.Outlined.Refresh) { model.refreshLines() }
                                 SettingsRow("Gestionar SIM en Android", Icons.Outlined.SimCard, onSettings)
                                 SettingsRow("Permisos de la aplicación", Icons.Outlined.Security, onAppSettings)
-                                SettingsRow("Sincronizar SMS de Cubacel", Icons.Outlined.MarkEmailRead, onSyncSms)
-                                SettingsRow("Desactivar importación de SMS", Icons.Outlined.Unsubscribe) { model.disableSms() }
                             }
                         }
+                        item { SmsConnectionCard(state, onSmsEnabled, onSyncSms, onAppSettings) }
                         item {
                             WhiteCard {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -468,3 +455,39 @@ private fun purchaseSummary(plan: CarrierReading.Purchase) = listOfNotNull(
 
 private fun expirationLabel(at: Long, now: Long) =
     if (isExpired(at, now)) "Vencido · ${expiryLabel(at)}" else "Vigente hasta ${expiryLabel(at)}"
+
+@Composable private fun SmsConnectionCard(state: DashboardState, onEnabled: (Boolean) -> Unit,
+                                         onSync: () -> Unit, onPermissions: () -> Unit) {
+    val status = state.smsStatus
+    val permissionsReady = state.permission && state.smsReadAllowed && state.smsReceiveAllowed
+    WhiteCard {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Mensajes de Cubacel", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                Text(when {
+                    !status.enabled -> "Importación desactivada"
+                    !permissionsReady -> "Conexión incompleta · faltan permisos"
+                    status.syncing -> "Sincronizando…"
+                    else -> "Importación automática activada"
+                }, fontSize = 12.sp, color = Muted, modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
+            }
+            Switch(checked = status.enabled, onCheckedChange = onEnabled,
+                enabled = !state.managingLine && (!status.syncing || status.enabled),
+                modifier = Modifier.semantics { contentDescription = "Importación automática de SMS Cubacel" })
+        }
+        Text("Solo mensajes reconocidos del operador, de todas tus SIM Cubacel activas.", color = Muted, fontSize = 12.sp)
+        status.lastAt?.let {
+            Text("Última sincronización · ${stamp(it)}", fontSize = 12.sp)
+            Text("${status.lastAdded} lecturas nuevas añadidas. Los duplicados no se cuentan.", color = Muted, fontSize = 12.sp)
+        } ?: Text("Todavía no se ha completado una sincronización.", color = Muted, fontSize = 12.sp)
+        status.error?.let { Text(it, fontSize = 12.sp, color = MaterialTheme.colorScheme.error) }
+        if (status.syncing) LinearProgressIndicator(Modifier.fillMaxWidth())
+        if (status.enabled && !permissionsReady) {
+            Text("Se necesita acceso al teléfono, lectura de SMS y recepción de mensajes para la conexión completa.", fontSize = 12.sp, color = Muted)
+            TextButton(onClick = onPermissions) { Text("Revisar permisos en Android") }
+        }
+        OutlinedButton(onClick = onSync,
+            enabled = status.enabled && state.permission && state.smsReadAllowed && !status.syncing && !state.managingLine,
+            modifier = Modifier.fillMaxWidth()) { Text(if (status.syncing) "Sincronizando…" else "Sincronizar ahora") }
+    }
+}
