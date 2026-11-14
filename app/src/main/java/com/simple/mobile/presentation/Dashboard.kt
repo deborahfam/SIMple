@@ -24,6 +24,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.simple.mobile.domain.carrier.CubacelQuery
@@ -41,7 +42,7 @@ private val Teal = Color(0xFF7353B6)
 private val Navy = Color(0xFF35234F)
 
 @Composable fun Dashboard(model: DashboardViewModel, onConnect: () -> Unit,
-    onQuery: (CubacelQuery) -> Unit, onRefreshAll: () -> Unit, onSyncSms: () -> Unit, onSettings: () -> Unit, onAppSettings: () -> Unit,
+    onQuery: (CubacelQuery) -> Unit, onRefreshAll: () -> Unit, onReminders: (Boolean) -> Unit, onNotificationSettings: () -> Unit, onSyncSms: () -> Unit, onSettings: () -> Unit, onAppSettings: () -> Unit,
     onDial: (String) -> Unit, onRechargeSite: () -> Unit) {
     val state by model.state.collectAsStateWithLifecycle()
     val now by produceState(System.currentTimeMillis()) {
@@ -281,6 +282,21 @@ private val Navy = Color(0xFF35234F)
                                 SettingsRow("Permisos de la aplicación", Icons.Outlined.Security, onAppSettings)
                                 SettingsRow("Sincronizar SMS de Cubacel", Icons.Outlined.MarkEmailRead, onSyncSms)
                                 SettingsRow("Desactivar importación de SMS", Icons.Outlined.Unsubscribe) { model.disableSms() }
+                            }
+                        }
+                        item {
+                            WhiteCard {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text("Recordatorios locales", fontWeight = FontWeight.Bold, fontSize = 18.sp, modifier = Modifier.weight(1f))
+                                    Switch(checked = state.remindersEnabled, onCheckedChange = onReminders,
+                                        modifier = Modifier.semantics { contentDescription = "Activar recordatorios locales" })
+                                }
+                                Text("Avisos 24 horas antes de un vencimiento conocido y al llegar la fecha de recarga. Consulta de nuevo para confirmar tu cupo.", color = Muted, fontSize = 13.sp)
+                                Text("Recursos bajos: saldo ≤ 20 CUP, Internet general ≤ 100 MB, minutos ≤ 5 o SMS ≤ 5. Solo con nuevas lecturas; no repetimos el aviso hasta que el recurso se recupere.", color = Muted, fontSize = 13.sp)
+                                Text("Sin consultas automáticas. Android puede retrasar los avisos. Las compras sin fecha de inicio confirmada no generan vencimientos estimados.", color = Muted, fontSize = 12.sp)
+                                if (state.remindersEnabled && !state.notificationsAllowed)
+                                    Text("Android tiene bloqueadas las notificaciones. Habilítalas para recibir los recordatorios.", color = MaterialTheme.colorScheme.error, fontSize = 13.sp)
+                                SettingsRow("Notificaciones en Android", Icons.Outlined.Notifications, onNotificationSettings)
                             }
                         }
                         item {

@@ -10,7 +10,20 @@ class SimpleApplication : Application() {
     val worker = Executors.newSingleThreadExecutor()
     val store by lazy { EncryptedReadingStore(this) }
     val readings = MutableStateFlow<List<EncryptedReadingStore.Entry>>(emptyList())
+    val reminders by lazy { com.simple.mobile.data.reminders.LocalReminders(this) }
     private val ussd by lazy { UssdDispatcher(this, worker) }
     fun dispatcher() = ussd
-    fun refreshReadings() { readings.value = store.history() }
+    override fun onCreate() {
+        super.onCreate()
+        worker.execute { reconcileReminders() }
+    }
+    fun refreshReadings() { publishReadings(store.history()) }
+    fun publishReadings(entries: List<EncryptedReadingStore.Entry>) {
+        readings.value = entries
+        reconcileReminders(entries)
+    }
+    fun reconcileReminders(entries: List<EncryptedReadingStore.Entry>? = null) {
+        try { reminders.reconcile(entries ?: if (reminders.enabled) store.history() else emptyList()) }
+        catch (_: Exception) { /* Reminder failures must never interrupt saving carrier readings. Retry on next app open/update. */ }
+    }
 }

@@ -12,6 +12,8 @@ Kotlin + Jetpack Compose presentation, MVVM, native subscription-aware USSD and 
 - SQLite history with AES-GCM encrypted typed payloads; keys remain in Android Keystore.
 - Dashboard and history survive app restarts. No manual balance-entry forms.
 - Resource cards show reading age and timestamps; known expired quotas are explicitly marked.
+- Each resource shows its own loading state, scoped to the SIM being queried.
+- Optional local reminders cover known expiry dates, recharge reopening and low resources.
 - **Actualizar todo** queries balance, data, minutes, SMS, bonuses and recharge status sequentially
   on the selected SIM, with category progress. **Detener** skips pending queries while allowing
   the in-flight response to be saved. Any query or storage failure stops the sequence without retries.
@@ -88,3 +90,26 @@ Live modem diagnostics are excluded from normal test runs. `LiveUssdProbeTest` r
 explicit `liveCubacel=true`, a subscription ID and an optional enum query list. It accepts
 only the read-only catalog, stops on modem failure, never retries, and emits numerically
 redacted formats. Run only with the device owner's explicit authorization.
+
+## Local reminders
+
+Enable **Ajustes → Recordatorios locales** and allow notifications when Android asks.
+Reminders are off by default. The app uses only saved readings and never queries USSD in the
+background. Notification details are hidden in the default lock-screen public version.
+
+- Expiry: approximately 24 hours before an explicit carrier expiry; no estimated first-use dates.
+- Recharge: at the carrier-provided reopening date, prompting a fresh query rather than claiming
+  recharge capacity is available.
+- Low resources: a new reading after opt-in at or below 20 CUP, 100 MB of general Internet,
+  5 voice minutes or 5 SMS. Restricted/unlimited data buckets do not trigger general-data warnings.
+  Readings older than 24 hours and expired quotas do not trigger low-resource alerts.
+- Repeated low readings are suppressed until a newer reading shows recovery. Reminders are
+  scoped to active Cubacel SIMs; changing readings reschedules outstanding reminders.
+- Turning reminders off cancels pending and visible notifications. Clearing history also removes
+  reminders based on those readings. Schedules are rebuilt after restart, reboot and app updates.
+
+Reminders use Android inexact alarms, so battery-saving modes may delay them; no exact-alarm
+permission is requested. See [Android alarm delivery behavior](https://developer.android.com/develop/background-work/services/alarms).
+Android notification settings can block delivery even while the app switch is on; Settings
+shows this state and links to Android notification controls. Force-stopping the app requires
+opening it again before reminders can resume.

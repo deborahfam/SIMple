@@ -32,7 +32,8 @@ data class DashboardState(
     val message: String? = null, val permission: Boolean = false,
     val storageReady: Boolean = false,
     val activeQuery: CubacelQuery? = null, val queryNumber: Int = 0, val queryTotal: Int = 0,
-    val querySubscription: Int = -1, val stopRequested: Boolean = false
+    val querySubscription: Int = -1, val stopRequested: Boolean = false,
+    val remindersEnabled: Boolean = false, val notificationsAllowed: Boolean = false
  ) {
     fun isQuerying(query: CubacelQuery): Boolean = busy && querySubscription == selected && activeQuery == query
 }
@@ -69,7 +70,7 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
         worker.execute {
             try {
                 val entries = store.history()
-                app.readings.value = entries
+                app.publishReadings(entries)
                 if (!disposed) mutable.update { it.copy(entries = entries, loading = false, storageReady = true) }
             } catch (_: Exception) {
                 if (!disposed) mutable.update { it.copy(loading = false, storageReady = false,
@@ -119,7 +120,7 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
                     withContext(worker.asCoroutineDispatcher()) {
                         val parsed = parser.parse(query, response, receivedAt)
                         store.save(line.subscription, parsed)
-                        app.readings.value = store.history()
+                        app.refreshReadings()
                     }
                     completed++
                 }
@@ -147,6 +148,14 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
         if (!disposed) mutable.update { it.copy(busy = false, activeQuery = null, stopRequested = false, message = message) }
         request = null
     }
+    fun refreshReminderSettings() {
+        mutable.update { it.copy(remindersEnabled = app.reminders.enabled, notificationsAllowed = app.reminders.allowed()) }
+        worker.execute { app.reconcileReminders() }
+    }
+    fun setReminders(enabled: Boolean) {
+        app.reminders.setEnabled(enabled)
+        refreshReminderSettings()
+    }
     fun disableSms() {
         app.getSharedPreferences("features", android.content.Context.MODE_PRIVATE).edit().putBoolean("carrier_sms", false).apply()
         notify("Importación automática de SMS desactivada. Tus lecturas guardadas se conservan.")
@@ -154,7 +163,7 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
     fun clearHistory() {
         app.getSharedPreferences("features", android.content.Context.MODE_PRIVATE).edit().putBoolean("carrier_sms", false).apply()
         worker.execute {
-            try { store.clear(); app.readings.value = emptyList(); if (!disposed) mutable.update { it.copy(entries = emptyList(), storageReady = true, message = "Historial eliminado de este dispositivo.") } }
+            try { store.clear(); app.publishReadings(emptyList()); if (!disposed) mutable.update { it.copy(entries = emptyList(), storageReady = true, message = "Historial eliminado de este dispositivo.") } }
             catch (_: Exception) { finish("No se pudo borrar el historial. Inténtalo de nuevo.") }
         }
     }
