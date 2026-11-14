@@ -33,7 +33,9 @@ data class DashboardState(
     val storageReady: Boolean = false,
     val activeQuery: CubacelQuery? = null, val queryNumber: Int = 0, val queryTotal: Int = 0,
     val querySubscription: Int = -1, val stopRequested: Boolean = false
- )
+ ) {
+    fun isQuerying(query: CubacelQuery): Boolean = busy && querySubscription == selected && activeQuery == query
+}
 
 class DashboardViewModel(application: Application) : AndroidViewModel(application) {
     private val mutable = MutableStateFlow(DashboardState())
