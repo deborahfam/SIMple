@@ -48,6 +48,10 @@ private val Navy = Color(0xFF35234F)
     val now by produceState(System.currentTimeMillis()) {
         while (true) { value = System.currentTimeMillis(); kotlinx.coroutines.delay(30_000) }
     }
+    var historyCategory by rememberSaveable { mutableStateOf<String?>(null) }
+    var historyDays by rememberSaveable { mutableIntStateOf(0) }
+    var historyLimit by rememberSaveable { mutableIntStateOf(25) }
+    LaunchedEffect(state.selected, historyCategory, historyDays) { historyLimit = 25 }
     var page by rememberSaveable { mutableIntStateOf(0) }
     var recharge by remember { mutableStateOf(false) }
     var confirmDial by remember { mutableStateOf<String?>(null) }
@@ -260,6 +264,25 @@ private val Navy = Color(0xFF35234F)
                         }
                         item { PrivacyFooter() }
                     } else if (page == 1) {
+                        val filtered = HistoryFilter.apply(entries, historyCategory, historyDays, now)
+                        item {
+                            WhiteCard {
+                                Text("Filtrar historial", fontWeight = FontWeight.Bold)
+                                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    item { FilterChip(selected = historyCategory == null, onClick = { historyCategory = null }, label = { Text("Todas") }) }
+                                    items(CubacelQuery.values().toList()) { query ->
+                                        FilterChip(selected = historyCategory == query.name, onClick = { historyCategory = query.name }, label = { Text(queryLabel(query)) })
+                                    }
+                                }
+                                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    items(listOf(0, 1, 7, 30)) { days ->
+                                        FilterChip(selected = historyDays == days, onClick = { historyDays = days }, label = { Text(if (days == 0) "Todo" else if (days == 1) "24 horas" else "$days días") })
+                                    }
+                                }
+                                Text("${minOf(historyLimit, filtered.size)} de ${filtered.size} lecturas · hasta 300 guardadas entre todas las líneas", fontSize = 12.sp, color = Muted)
+                            }
+                        }
+                        if (entries.isNotEmpty() && filtered.isEmpty()) item { Text("No hay lecturas con estos filtros.", color = Muted) }
                         if (state.loading) item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
                         if (entries.isEmpty()) item {
                             WhiteCard {
@@ -268,7 +291,7 @@ private val Navy = Color(0xFF35234F)
                                 Text("Al consultar, extraemos y guardamos los datos automáticamente. No tienes que rellenar formularios.", color = Muted, fontSize = 13.sp)
                             }
                         }
-                        items(entries.take(100)) { entry ->
+                        items(filtered.take(historyLimit)) { entry ->
                             val reading = entry.reading
                             WhiteCard {
                                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -278,6 +301,9 @@ private val Navy = Color(0xFF35234F)
                                 Text(readingSummary(reading), fontSize = 18.sp, fontWeight = FontWeight.Medium)
                                 Text("${reading.source()} · ${stamp(reading.receivedAt())}", fontSize = 12.sp, color = Muted)
                             }
+                        }
+                        if (filtered.size > historyLimit) item {
+                            OutlinedButton(onClick = { historyLimit += 25 }, modifier = Modifier.fillMaxWidth()) { Text("Cargar más") }
                         }
                     } else {
                         item {
