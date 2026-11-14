@@ -52,6 +52,10 @@ private val Navy = Color(0xFF35234F)
     var recharge by remember { mutableStateOf(false) }
     var confirmDial by remember { mutableStateOf<String?>(null) }
     var delete by remember { mutableStateOf(false) }
+    var deleteSubscription by remember { mutableStateOf<Int?>(null) }
+    var deleteLabel by remember { mutableStateOf("") }
+    var rename by remember { mutableStateOf<Line?>(null) }
+    var nickname by remember { mutableStateOf("") }
     val snackbar = remember { SnackbarHostState() }
     LaunchedEffect(state.message) { state.message?.let { snackbar.showSnackbar(it); model.dismissMessage() } }
     MaterialTheme(colorScheme = lightColorScheme(primary = Teal, secondary = Navy, background = Paper, surface = Color.White,
@@ -94,6 +98,7 @@ private val Navy = Color(0xFF35234F)
                         }
                     }
                     item {
+                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         if (!state.permission) {
                             WhiteCard {
                                 Icon(Icons.Outlined.SimCard, null, tint = Teal)
@@ -107,9 +112,10 @@ private val Navy = Color(0xFF35234F)
                                 Text("Activa o inserta una tarjeta para consultar. Tu historial sigue disponible.", color = Muted, fontSize = 13.sp)
                                 OutlinedButton(onClick = onSettings) { Text("Gestionar tarjetas SIM") }
                             }
-                        } else {
+                        }
+                        if (state.displayLines.isNotEmpty()) {
                             LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                items(state.lines, key = { it.subscription }) { line ->
+                                items(state.displayLines, key = { it.subscription }) { line ->
                                     val selected = state.selected == line.subscription
                                     Surface(onClick = { model.select(line.subscription) }, shape = RoundedCornerShape(18.dp),
                                         color = if (selected) Navy else Color.White) {
@@ -117,15 +123,27 @@ private val Navy = Color(0xFF35234F)
                                             Icon(Icons.Outlined.SimCard, null, tint = if (selected) Mint else Muted, modifier = Modifier.size(21.dp))
                                             Spacer(Modifier.width(10.dp))
                                             Column {
-                                                Text("SIM ${line.slot + 1} · ${line.carrier.ifBlank { "Operador" }}", color = if (selected) Color.White else Ink,
+                                                Text(line.label, color = if (selected) Color.White else Ink,
                                                     fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                                                Text(if (line.cubacel) "Cubacel · consultas disponibles" else "Operador sin integración", color = if (selected) Color(0xFFD6C8E8) else Muted, fontSize = 10.sp)
+                                                Text(if (!line.active) "Guardada · solo historial" else if (line.cubacel) "Cubacel · consultas disponibles" else "Operador sin integración", color = if (selected) Color(0xFFD6C8E8) else Muted, fontSize = 10.sp)
                                             }
                                             if (selected) { Spacer(Modifier.width(12.dp)); Icon(Icons.Outlined.CheckCircle, null, tint = Mint, modifier = Modifier.size(17.dp)) }
                                         }
                                     }
                                 }
                                 item { OutlinedIconButton(onClick = onSettings, modifier = Modifier.padding(top = 6.dp)) { Icon(Icons.Outlined.Add, "Añadir o activar SIM") } }
+                            }
+                        }
+                    }
+                    }
+                    state.displayLines.firstOrNull { it.subscription == state.selected }?.let { line ->
+                        item {
+                            WhiteCard {
+                                Text(line.label, fontWeight = FontWeight.Bold)
+                                if (!line.active) Text("Línea guardada: puedes revisar sus lecturas sin tener la SIM activa. Las consultas están deshabilitadas.", color = Muted, fontSize = 13.sp)
+                                OutlinedButton(onClick = { rename = line; nickname = line.nickname }, enabled = state.storageReady && !state.managingLine) { Text("Cambiar nombre") }
+                                TextButton(onClick = { deleteSubscription = line.subscription; deleteLabel = line.label; delete = true },
+                                    enabled = state.storageReady && !state.busy && !state.managingLine) { Text("Eliminar datos de esta línea") }
                             }
                         }
                     }
@@ -136,7 +154,7 @@ private val Navy = Color(0xFF35234F)
                         val voice = entries.firstOrNull { it.reading.query() == CubacelQuery.VOICE }?.reading
                         val sms = entries.firstOrNull { it.reading.query() == CubacelQuery.SMS }?.reading
                         val bonus = entries.firstOrNull { it.reading.query() == CubacelQuery.BONUSES_AND_USD_PLANS }?.reading
-                        val enabled = !state.busy && state.lines.any { it.subscription == state.selected && it.cubacel } && state.storageReady
+                        val enabled = !state.busy && !state.managingLine && state.lines.any { it.subscription == state.selected && it.cubacel } && state.storageReady
                         item {
                             Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(26.dp))
                                 .background(Brush.linearGradient(listOf(Navy, Color(0xFF65468D)))).padding(24.dp),
@@ -304,7 +322,7 @@ private val Navy = Color(0xFF35234F)
                                 Text("Privacidad, desde el inicio", fontWeight = FontWeight.Bold, fontSize = 18.sp)
                                 Text("Las respuestas USSD se procesan en este teléfono. Solo guardamos los valores reconocidos, cifrados con una clave del dispositivo. Sin cuentas, sin anuncios y sin telemetría.", color = Muted, fontSize = 13.sp)
                                 SettingsRow("Reintentar almacenamiento", Icons.Outlined.Refresh) { model.retryStorage() }
-                                SettingsRow("Eliminar historial local", Icons.Outlined.DeleteOutline) { delete = true }
+                                SettingsRow("Eliminar datos de todas las líneas", Icons.Outlined.DeleteOutline) { deleteSubscription = null; deleteLabel = "todas las líneas"; delete = true }
                                 Text("La SIM y el historial se asocian al registro local de Android. Si sustituyes una tarjeta, elimina su historial para evitar mezclar lecturas.", fontSize = 11.sp, color = Muted)
                             }
                         }
@@ -326,9 +344,16 @@ private val Navy = Color(0xFF35234F)
             text = { Text("Se abrirá $code en el marcador. Elige tu SIM Cubacel y confirma allí. SIMple no realiza compras ni recargas automáticamente.") },
             confirmButton = { TextButton(onClick = { confirmDial = null; onDial(code) }) { Text("Abrir marcador") } },
             dismissButton = { TextButton(onClick = { confirmDial = null }) { Text("Cancelar") } }) }
-        if (delete) AlertDialog(onDismissRequest = { delete = false }, title = { Text("¿Eliminar el historial?") },
-            text = { Text("Se borrarán todas las lecturas y se desactivará la importación automática de SMS. No se puede deshacer.") },
-            confirmButton = { TextButton(onClick = { delete = false; model.clearHistory() }) { Text("Eliminar") } },
+        rename?.let { line ->
+            AlertDialog(onDismissRequest = { rename = null }, title = { Text("Nombre de la línea") },
+                text = { OutlinedTextField(value = nickname, onValueChange = { nickname = it.filterNot { c -> c.isISOControl() }.take(40) },
+                    label = { Text("Ej. Personal o Trabajo") }, supportingText = { Text("${nickname.length}/40 · Vacío restaura el nombre original") }, singleLine = true) },
+                confirmButton = { TextButton(onClick = { model.renameLine(line.subscription, nickname); rename = null }) { Text("Guardar") } },
+                dismissButton = { TextButton(onClick = { rename = null }) { Text("Cancelar") } })
+        }
+        if (delete) AlertDialog(onDismissRequest = { delete = false }, title = { Text("¿Eliminar datos de $deleteLabel?") },
+            text = { Text("Se borrarán las lecturas y nombres guardados de ${if (deleteSubscription == null) "todas las líneas" else "esta línea"}. Se desactivará la importación SMS para evitar reimportar los mensajes. No se puede deshacer.") },
+            confirmButton = { TextButton(onClick = { delete = false; model.clearHistory(deleteSubscription) }, enabled = !state.busy && !state.managingLine) { Text("Eliminar") } },
             dismissButton = { TextButton(onClick = { delete = false }) { Text("Cancelar") } })
     }
 }

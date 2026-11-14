@@ -18,12 +18,47 @@ import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
 /** SQLite holds only random row IDs, IVs and authenticated encrypted typed payloads. */
-class EncryptedReadingStore(context: Context, name: String = "readings.db") : SQLiteOpenHelper(context, name, null, 1) {
+class EncryptedReadingStore(context: Context, name: String = "readings.db") : SQLiteOpenHelper(context, name, null, 2) {
     data class Entry(val subscription: Int, val reading: CarrierReading)
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL("CREATE TABLE readings (id TEXT PRIMARY KEY NOT NULL, iv BLOB NOT NULL, payload BLOB NOT NULL)")
+        createProfiles(db)
     }
-    override fun onUpgrade(db: SQLiteDatabase, old: Int, new: Int) { error("Unsupported database migration") }
+    private fun createProfiles(db: SQLiteDatabase) {
+        db.execSQL("CREATE TABLE line_profiles (id TEXT PRIMARY KEY NOT NULL, iv BLOB NOT NULL, payload BLOB NOT NULL)")
+    }
+    override fun onUpgrade(db: SQLiteDatabase, old: Int, new: Int) {
+        if (old == 1 && new == 2) createProfiles(db) else error("Unsupported database migration")
+    }
+    private fun decrypt(id: String, iv: ByteArray, payload: ByteArray): JSONObject {
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding").apply {
+            init(Cipher.DECRYPT_MODE, key(), GCMParameterSpec(128, iv)); updateAAD(id.toByteArray())
+        }
+        val bytes = cipher.doFinal(payload)
+        return try { JSONObject(String(bytes, Charsets.UTF_8)) } finally { bytes.fill(0) }
+    }
+    private fun profileRows(): List<Pair<String, JSONObject>> = buildList {
+        readableDatabase.rawQuery("SELECT id,iv,payload FROM line_profiles", null).use { cursor ->
+            while (cursor.moveToNext()) add(cursor.getString(0) to decrypt(cursor.getString(0), cursor.getBlob(1), cursor.getBlob(2)))
+        }
+    }
+    @Synchronized fun nicknames(): Map<Int, String> = profileRows().associate { it.second.getInt("subscription") to it.second.getString("nickname") }
+    @Synchronized fun rename(subscription: Int, nickname: String) {
+        require(subscription >= 0)
+        val name = nickname.trim()
+        require(name.length <= 40 && name.none { it.isISOControl() })
+        val existing = profileRows().firstOrNull { it.second.getInt("subscription") == subscription }?.first
+        if (name.isEmpty()) {
+            existing?.let { writableDatabase.delete("line_profiles", "id=?", arrayOf(it)) }
+            return
+        }
+        val id = existing ?: UUID.randomUUID().toString()
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding").apply { init(Cipher.ENCRYPT_MODE, key()); updateAAD(id.toByteArray()) }
+        val bytes = JSONObject().put("subscription", subscription).put("nickname", name).toString().toByteArray(Charsets.UTF_8)
+        val payload = try { cipher.doFinal(bytes) } finally { bytes.fill(0) }
+        val values = ContentValues().apply { put("id", id); put("iv", cipher.iv); put("payload", payload) }
+        writableDatabase.insertWithOnConflict("line_profiles", null, values, SQLiteDatabase.CONFLICT_REPLACE).also { check(it != -1L) }
+    }
     private fun key(): SecretKey {
         val store = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
         (store.getKey("simple.readings.v1", null) as? SecretKey)?.let { return it }
@@ -85,7 +120,29 @@ class EncryptedReadingStore(context: Context, name: String = "readings.db") : SQ
         }
         return rows.sortedByDescending { it.reading.receivedAt() }
     }
-    @Synchronized fun clear() { writableDatabase.delete("readings", null, null) }
+    /** Decrypt routing metadata in a transaction; never add plaintext subscription columns. */
+    @Synchronized fun clear(subscription: Int? = null) {
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            if (subscription == null) {
+                db.delete("readings", null, null)
+                db.delete("line_profiles", null, null)
+            } else {
+                for (table in listOf("readings", "line_profiles")) {
+                    val ids = mutableListOf<String>()
+                    db.rawQuery("SELECT id,iv,payload FROM $table", null).use { cursor ->
+                        while (cursor.moveToNext()) {
+                            val id = cursor.getString(0)
+                            if (decrypt(id, cursor.getBlob(1), cursor.getBlob(2)).getInt("subscription") == subscription) ids += id
+                        }
+                    }
+                    ids.forEach { db.delete(table, "id=?", arrayOf(it)) }
+                }
+            }
+            db.setTransactionSuccessful()
+        } finally { db.endTransaction() }
+    }
     private fun JSONObject.longOrNull(key: String): Long? = if (isNull(key)) null else getLong(key)
     private fun JSONObject.stringOrNull(key: String): String? = if (isNull(key)) null else getString(key)
 }

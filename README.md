@@ -113,3 +113,16 @@ permission is requested. See [Android alarm delivery behavior](https://developer
 Android notification settings can block delivery even while the app switch is on; Settings
 shows this state and links to Android notification controls. Force-stopping the app requires
 opening it again before reminders can resume.
+
+## Managing saved lines
+
+Active SIMs and lines with saved history appear in the same selector. Removed SIMs are labeled
+**Guardada · solo historial** and cannot receive USSD queries. **Cambiar nombre** saves an encrypted
+nickname (up to 40 characters); an empty name restores the default. Names use the same local Android
+subscription association as readings, not a permanent hardware identity.
+
+**Eliminar datos de esta línea** removes only that line's readings and nickname after confirmation.
+Other lines are preserved. The global deletion action remains in Settings. Both actions disable SMS
+import to prevent immediate repopulation; explicitly reconnecting SMS can import inbox history again.
+Deletion is unavailable during a USSD query. Database version 2 adds encrypted nickname storage
+without rewriting existing readings.

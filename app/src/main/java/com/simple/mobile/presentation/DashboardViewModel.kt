@@ -24,7 +24,12 @@ import kotlinx.coroutines.CancellationException
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
-data class Line(val subscription: Int, val slot: Int, val carrier: String, val cubacel: Boolean)
+data class Line(val subscription: Int, val slot: Int, val carrier: String, val cubacel: Boolean,
+                val active: Boolean = true, val nickname: String = "") {
+    val label: String get() = nickname.ifBlank {
+        if (active) "SIM ${slot + 1} · ${carrier.ifBlank { "Operador" }}" else "Línea guardada $subscription"
+    }
+}
 data class DashboardState(
     val lines: List<Line> = emptyList(), val selected: Int = -1,
     val entries: List<EncryptedReadingStore.Entry> = emptyList(),
@@ -33,8 +38,10 @@ data class DashboardState(
     val storageReady: Boolean = false,
     val activeQuery: CubacelQuery? = null, val queryNumber: Int = 0, val queryTotal: Int = 0,
     val querySubscription: Int = -1, val stopRequested: Boolean = false,
+    val nicknames: Map<Int, String> = emptyMap(), val managingLine: Boolean = false,
     val remindersEnabled: Boolean = false, val notificationsAllowed: Boolean = false
  ) {
+    val displayLines: List<Line> get() = LineCatalog.visible(lines, entries.map { it.subscription }.toSet(), nicknames)
     fun isQuerying(query: CubacelQuery): Boolean = busy && querySubscription == selected && activeQuery == query
 }
 
@@ -49,7 +56,7 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
     @Volatile private var disposed = false
     init {
         loadHistory()
-        viewModelScope.launch { app.readings.collect { values -> mutable.update { it.copy(entries = values) } } }
+        viewModelScope.launch { app.readings.collect { values -> mutable.update { old -> old.copy(entries = values).let { it.copy(selected = LineCatalog.selection(old.selected, it.displayLines)) } } } }
     }
     fun refreshLines() {
         val app = getApplication<Application>()
@@ -61,7 +68,7 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
             }
         } catch (_: RuntimeException) { emptyList() }
         mutable.update { old -> old.copy(lines = lines, permission = permitted,
-            selected = if (lines.any { it.subscription == old.selected }) old.selected else lines.firstOrNull { it.cubacel }?.subscription ?: lines.firstOrNull()?.subscription ?: -1) }
+            selected = LineCatalog.selection(old.selected, LineCatalog.visible(lines, old.entries.map { it.subscription }.toSet(), old.nicknames))) }
     }
     fun select(subscription: Int) { mutable.update { it.copy(selected = subscription) } }
     fun dismissMessage() { mutable.update { it.copy(message = null) } }
@@ -70,8 +77,9 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
         worker.execute {
             try {
                 val entries = store.history()
+                val names = store.nicknames()
                 app.publishReadings(entries)
-                if (!disposed) mutable.update { it.copy(entries = entries, loading = false, storageReady = true) }
+                if (!disposed) mutable.update { it.copy(entries = entries, nicknames = names, loading = false, storageReady = true) }
             } catch (_: Exception) {
                 if (!disposed) mutable.update { it.copy(loading = false, storageReady = false,
                     message = "No se pudo abrir el historial cifrado. Tus datos no se han borrado. Puedes reintentar desde Ajustes.") }
@@ -95,7 +103,7 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
 
     private fun startQueries(queries: List<CubacelQuery>) {
         val now = mutable.value
-        if (now.busy) return
+        if (now.busy || now.managingLine) return
         if (!now.storageReady) { notify("El almacenamiento no está disponible. Reintenta desde Ajustes antes de consultar."); return }
         val line = now.lines.firstOrNull { it.subscription == now.selected }
         if (line == null) { notify("Conecta y selecciona una SIM activa."); return }
@@ -160,11 +168,32 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
         app.getSharedPreferences("features", android.content.Context.MODE_PRIVATE).edit().putBoolean("carrier_sms", false).apply()
         notify("Importación automática de SMS desactivada. Tus lecturas guardadas se conservan.")
     }
-    fun clearHistory() {
+    fun renameLine(subscription: Int, nickname: String) {
+        if (mutable.value.managingLine || !mutable.value.storageReady) return
+        mutable.update { it.copy(managingLine = true) }
+        worker.execute {
+            try {
+                store.rename(subscription, nickname)
+                val names = store.nicknames()
+                if (!disposed) mutable.update { it.copy(nicknames = names, message = "Nombre de la línea guardado.") }
+            } catch (_: Exception) { if (!disposed) notify("No se pudo guardar el nombre de la línea.") }
+            finally { if (!disposed) mutable.update { it.copy(managingLine = false) } }
+        }
+    }
+    fun clearHistory(subscription: Int? = null) {
+        if (mutable.value.busy || mutable.value.managingLine) { notify("Espera a que termine la consulta antes de borrar datos."); return }
+        mutable.update { it.copy(managingLine = true) }
         app.getSharedPreferences("features", android.content.Context.MODE_PRIVATE).edit().putBoolean("carrier_sms", false).apply()
         worker.execute {
-            try { store.clear(); app.publishReadings(emptyList()); if (!disposed) mutable.update { it.copy(entries = emptyList(), storageReady = true, message = "Historial eliminado de este dispositivo.") } }
-            catch (_: Exception) { finish("No se pudo borrar el historial. Inténtalo de nuevo.") }
+            try {
+                store.clear(subscription)
+                app.refreshReadings()
+                val names = store.nicknames()
+                if (!disposed) mutable.update { it.copy(nicknames = names, storageReady = true,
+                    message = if (subscription == null) "Datos locales eliminados. Importación SMS desactivada."
+                        else "Datos de esta línea eliminados. Las demás líneas se conservan. Importación SMS desactivada.") }
+            } catch (_: Exception) { if (!disposed) notify("No se pudieron borrar los datos. Inténtalo de nuevo.") }
+            finally { if (!disposed) mutable.update { it.copy(managingLine = false) } }
         }
     }
     override fun onCleared() {

@@ -58,4 +58,45 @@ class EncryptedStoreTest {
         context.deleteDatabase(name)
     }
 
+    @Test fun nicknamesStayEncryptedAndPerLineDeletionPreservesOtherLines() {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val name = "test-line-management.db"
+        context.deleteDatabase(name)
+        val store = EncryptedReadingStore(context, name)
+        val reading = CubacelParser().parse(CubacelQuery.BALANCE, "Saldo: 25 CUP", 123L)
+        store.save(77, reading)
+        store.save(88, reading)
+        store.rename(77, "Personal secreto")
+        store.rename(88, "Trabajo")
+        store.close()
+        val reopened = EncryptedReadingStore(context, name)
+        assertEquals("Personal secreto", reopened.nicknames()[77])
+        reopened.readableDatabase.rawQuery("SELECT payload FROM line_profiles", null).use { cursor ->
+            while (cursor.moveToNext()) assertFalse(String(cursor.getBlob(0), Charsets.UTF_8).contains("Personal secreto"))
+        }
+        reopened.clear(77)
+        assertEquals(listOf(88), reopened.history().map { it.subscription })
+        assertEquals(mapOf(88 to "Trabajo"), reopened.nicknames())
+        reopened.rename(88, "")
+        assertTrue(reopened.nicknames().isEmpty())
+        reopened.close()
+        context.deleteDatabase(name)
+    }
+    @Test fun versionOneUpgradePreservesReadings() {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val name = "test-upgrade.db"
+        context.deleteDatabase(name)
+        EncryptedReadingStore(context, name).use { store ->
+            store.save(77, CubacelParser().parse(CubacelQuery.BALANCE, "Saldo: 25 CUP", 123L))
+            store.writableDatabase.execSQL("DROP TABLE line_profiles")
+            store.writableDatabase.version = 1
+        }
+        EncryptedReadingStore(context, name).use { upgraded ->
+            assertEquals(1, upgraded.history().size)
+            upgraded.rename(77, "Actualizada")
+            assertEquals("Actualizada", upgraded.nicknames()[77])
+        }
+        context.deleteDatabase(name)
+    }
+
 }
