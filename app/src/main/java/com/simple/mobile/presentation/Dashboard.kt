@@ -38,9 +38,12 @@ private val Teal = Color(0xFF7353B6)
 private val Navy = Color(0xFF35234F)
 
 @Composable fun Dashboard(model: DashboardViewModel, onConnect: () -> Unit,
-    onQuery: (CubacelQuery) -> Unit, onSyncSms: () -> Unit, onSettings: () -> Unit, onAppSettings: () -> Unit,
+    onQuery: (CubacelQuery) -> Unit, onRefreshAll: () -> Unit, onSyncSms: () -> Unit, onSettings: () -> Unit, onAppSettings: () -> Unit,
     onDial: (String) -> Unit, onRechargeSite: () -> Unit) {
     val state by model.state.collectAsStateWithLifecycle()
+    val now by produceState(System.currentTimeMillis()) {
+        while (true) { value = System.currentTimeMillis(); kotlinx.coroutines.delay(30_000) }
+    }
     var page by rememberSaveable { mutableIntStateOf(0) }
     var recharge by remember { mutableStateOf(false) }
     var confirmDial by remember { mutableStateOf<String?>(null) }
@@ -129,7 +132,7 @@ private val Navy = Color(0xFF35234F)
                         val voice = entries.firstOrNull { it.reading.query() == CubacelQuery.VOICE }?.reading
                         val sms = entries.firstOrNull { it.reading.query() == CubacelQuery.SMS }?.reading
                         val bonus = entries.firstOrNull { it.reading.query() == CubacelQuery.BONUSES_AND_USD_PLANS }?.reading
-                        val enabled = !state.busy && state.selected >= 0 && state.storageReady
+                        val enabled = !state.busy && state.lines.any { it.subscription == state.selected && it.cubacel } && state.storageReady
                         item {
                             Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(26.dp))
                                 .background(Brush.linearGradient(listOf(Navy, Color(0xFF65468D)))).padding(24.dp),
@@ -142,16 +145,36 @@ private val Navy = Color(0xFF35234F)
                                     Text(balance?.balanceCup() ?: "—", color = Color.White, fontSize = 46.sp, lineHeight = 52.sp, fontWeight = FontWeight.SemiBold)
                                     Text(" CUP", color = Color(0xFFDDCEED), fontSize = 16.sp, modifier = Modifier.padding(bottom = 7.dp))
                                 }
-                                Text(balance?.let { "Última lectura · ${stamp(it.receivedAt())}" } ?: "Consulta tu línea para ver el saldo real.", color = Color(0xFFDDCEED), fontSize = 12.sp)
-                                balance?.expiresAt()?.let { Text("Vigencia hasta ${expiryLabel(it)}", color = Color(0xFFDDCEED), fontSize = 12.sp) }
+                                Text(balance?.let { "${freshnessLabel(it.receivedAt(), now)} · ${stamp(it.receivedAt())}" } ?: "Consulta tu línea para ver el saldo real.", color = Color(0xFFDDCEED), fontSize = 12.sp)
+                                balance?.expiresAt()?.let { Text(expirationLabel(it, now), color = Color(0xFFDDCEED), fontSize = 12.sp) }
                                 Button(onClick = { onQuery(CubacelQuery.BALANCE) }, enabled = enabled,
                                     colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Navy,
                                         disabledContainerColor = Color(0xFF705782), disabledContentColor = Color(0xFFD9CBE4)),
                                     shape = RoundedCornerShape(14.dp), contentPadding = PaddingValues(14.dp), modifier = Modifier.fillMaxWidth()) {
                                     Icon(Icons.Outlined.Refresh, null, modifier = Modifier.size(19.dp)); Spacer(Modifier.width(8.dp))
-                                    Text(if (state.busy) "Consultando…" else "Actualizar saldo", fontWeight = FontWeight.Bold)
+                                    Text(if (state.busy && state.activeQuery == CubacelQuery.BALANCE && state.querySubscription == state.selected) "Consultando saldo…" else "Actualizar saldo", fontWeight = FontWeight.Bold)
                                 }
-                                if (state.busy) LinearProgressIndicator(modifier = Modifier.fillMaxWidth(), color = Mint, trackColor = Color(0xFF705782))
+
+                            }
+                        }
+                        item {
+                            WhiteCard {
+                                Button(onClick = onRefreshAll, enabled = enabled, modifier = Modifier.fillMaxWidth()) {
+                                    Icon(Icons.Outlined.Refresh, null); Spacer(Modifier.width(8.dp))
+                                    Text("Actualizar todo")
+                                }
+                                if (state.busy) {
+                                    val slot = state.lines.firstOrNull { it.subscription == state.querySubscription }?.slot?.plus(1)
+                                    Text("SIM ${slot ?: "—"} · ${state.queryNumber} de ${state.queryTotal}: ${state.activeQuery?.let { queryLabel(it) } ?: "Preparando"}", fontSize = 13.sp)
+                                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                                    if (state.queryTotal > 1) {
+                                        Text(if (state.stopRequested) "Se guardará la respuesta en curso y no se enviarán más consultas."
+                                            else "Consultas una a una. Detener omite las pendientes; la consulta en curso puede terminar.", fontSize = 12.sp, color = Muted)
+                                        OutlinedButton(onClick = { model.stopRefresh() }, enabled = !state.stopRequested) {
+                                            Text(if (state.stopRequested) "Deteniendo…" else "Detener")
+                                        }
+                                    }
+                                } else Text("Saldo, datos, minutos, SMS, bonos y recarga de la SIM seleccionada.", fontSize = 12.sp, color = Muted)
                             }
                         }
                         item {
@@ -161,7 +184,7 @@ private val Navy = Color(0xFF35234F)
                             }
                         }
                         item {
-                            RechargeAvailability(entries.firstOrNull { it.reading.query() == CubacelQuery.RECHARGE_STATUS }?.reading, enabled) {
+                            RechargeAvailability(entries.firstOrNull { it.reading.query() == CubacelQuery.RECHARGE_STATUS }?.reading, enabled, now) {
                                 onQuery(CubacelQuery.RECHARGE_STATUS)
                             }
                         }
@@ -193,28 +216,30 @@ private val Navy = Color(0xFF35234F)
                             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                                 val general = data?.bundles()?.firstOrNull { it.kind() == "general" }
                                 ResourceCard("Datos", general?.let { if (it.unlimited()) "Ilimitado" else gb(it.bytes()) } ?: "—", "GB · Internet general",
-                                    Icons.Outlined.DataUsage, Color(0xFFE6EEF9), Modifier.weight(1f), enabled) { onQuery(CubacelQuery.DATA) }
+                                    Icons.Outlined.DataUsage, Color(0xFFE6EEF9), Modifier.weight(1f), enabled, data, now, general?.expiresAt() ?: data?.expiresAt()) { onQuery(CubacelQuery.DATA) }
                                 ResourceCard("Minutos", voice?.voiceSeconds()?.let { number(BigDecimal(it).divide(BigDecimal(60), 2, java.math.RoundingMode.DOWN)) } ?: "—",
-                                    "Disponibles", Icons.Outlined.Call, Color(0xFFFFEBDD), Modifier.weight(1f), enabled) { onQuery(CubacelQuery.VOICE) }
+                                    "Disponibles", Icons.Outlined.Call, Color(0xFFFFEBDD), Modifier.weight(1f), enabled, voice, now) { onQuery(CubacelQuery.VOICE) }
                             }
                         }
                         item {
                             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                                 ResourceCard("Mensajes", sms?.smsCount()?.toString() ?: "—", "SMS disponibles", Icons.Outlined.Sms,
-                                    Color(0xFFEDE8FA), Modifier.weight(1f), enabled) { onQuery(CubacelQuery.SMS) }
+                                    Color(0xFFEDE8FA), Modifier.weight(1f), enabled, sms, now) { onQuery(CubacelQuery.SMS) }
                                 ResourceCard("Bonos", bonus?.let { "${it.bundles().size}" } ?: "—", "Bolsas de datos", Icons.Outlined.Redeem,
-                                    Color(0xFFE4F0E9), Modifier.weight(1f), enabled) { onQuery(CubacelQuery.BONUSES_AND_USD_PLANS) }
+                                    Color(0xFFE4F0E9), Modifier.weight(1f), enabled, bonus, now) { onQuery(CubacelQuery.BONUSES_AND_USD_PLANS) }
                             }
                         }
                         val bundleReadings = listOfNotNull(data, bonus)
                         if (bundleReadings.any { it.bundles().isNotEmpty() }) item {
                             WhiteCard {
-                                SectionTitle("Paquetes activos", "Cuotas separadas")
+                                SectionTitle("Últimos paquetes", "Cuotas separadas")
                                 bundleReadings.forEach { reading -> reading.bundles().forEach { bundle ->
                                     Row(Modifier.fillMaxWidth().padding(vertical = 7.dp), horizontalArrangement = Arrangement.SpaceBetween) {
                                         Column(Modifier.weight(1f)) {
                                             Text(bundleLabel(bundle.kind()), fontSize = 14.sp, fontWeight = FontWeight.Medium)
-                                            Text(bundle.expiresAt()?.let { "Hasta ${expiryLabel(it)}" } ?: "Vigencia no informada", fontSize = 11.sp, color = Muted)
+                                            Text(bundle.expiresAt()?.let { expirationLabel(it, now) } ?: "Vigencia no informada", fontSize = 12.sp,
+                                                color = if (isExpired(bundle.expiresAt(), now)) MaterialTheme.colorScheme.error else Muted)
+                                            Text(freshnessLabel(reading.receivedAt(), now), fontSize = 12.sp, color = Muted)
                                         }
                                         Text(if (bundle.unlimited()) "Ilimitado" else "${gb(bundle.bytes())} GB", fontWeight = FontWeight.Bold, color = Teal, fontSize = 14.sp)
                                     }
@@ -287,10 +312,10 @@ private val Navy = Color(0xFF35234F)
     }
 }
 
-@Composable private fun RechargeAvailability(reading: CarrierReading?, enabled: Boolean, query: () -> Unit) {
+@Composable private fun RechargeAvailability(reading: CarrierReading?, enabled: Boolean, now: Long, query: () -> Unit) {
     val available = reading?.availableRechargeCup()?.let { runCatching { BigDecimal(it) }.getOrNull() }
     val next = reading?.nextRechargeAt()
-    val datePassed = next != null && System.currentTimeMillis() >= next
+    val datePassed = next != null && now >= next
     val title = when {
         available != null && available.signum() > 0 -> "Puedes recargar hasta ${number(available)} CUP"
         datePassed -> "La fecha indicada ya llegó"
@@ -317,7 +342,7 @@ private val Navy = Color(0xFF35234F)
             else -> "Según la última respuesta del operador. Consulta de nuevo antes de recargar."
         }, fontSize = 12.sp, color = Muted)
         if (available != null) Text("Cupo en la última consulta: ${number(available)} CUP", fontSize = 12.sp, fontWeight = FontWeight.Medium)
-        reading?.receivedAt()?.let { Text("Actualizado · ${stamp(it)}", color = Muted, fontSize = 10.sp) }
+        reading?.receivedAt()?.let { Text("${freshnessLabel(it, now)} · ${stamp(it)}", color = Muted, fontSize = 10.sp) }
         OutlinedButton(onClick = query, enabled = enabled, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)) {
             Icon(Icons.Outlined.Refresh, null, modifier = Modifier.size(17.dp)); Spacer(Modifier.width(8.dp))
             Text("Actualizar disponibilidad")
@@ -344,7 +369,7 @@ private fun rechargeDate(at: Long) = SimpleDateFormat("d 'de' MMMM 'de' yyyy", L
         }
     }
 }
-@Composable private fun ResourceCard(title: String, value: String, unit: String, icon: ImageVector, tint: Color, modifier: Modifier, enabled: Boolean, action: () -> Unit) {
+@Composable private fun ResourceCard(title: String, value: String, unit: String, icon: ImageVector, tint: Color, modifier: Modifier, enabled: Boolean, reading: CarrierReading?, now: Long, expiry: Long? = reading?.expiresAt(), action: () -> Unit) {
     Surface(onClick = action, enabled = enabled, shape = RoundedCornerShape(21.dp), color = Color.White, modifier = modifier) {
         Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
@@ -354,6 +379,10 @@ private fun rechargeDate(at: Long) = SimpleDateFormat("d 'de' MMMM 'de' yyyy", L
             Text(title, fontSize = 12.sp, color = Muted)
             Text(value, fontSize = if (value.length > 8) 20.sp else 29.sp, lineHeight = 34.sp, fontWeight = FontWeight.SemiBold, color = Ink)
             Text(unit, fontSize = 10.sp, color = Muted)
+            Text(reading?.let { freshnessLabel(it.receivedAt(), now) } ?: "Sin consultas", fontSize = 12.sp, color = Muted)
+            reading?.let { Text(stamp(it.receivedAt()), fontSize = 11.sp, color = Muted) }
+            expiry?.let { Text(expirationLabel(it, now), fontSize = 12.sp,
+                color = if (isExpired(it, now)) MaterialTheme.colorScheme.error else Muted) }
         }
     }
 }
@@ -387,3 +416,6 @@ private fun purchaseSummary(plan: CarrierReading.Purchase) = listOfNotNull(
     plan.totalBytes()?.let { "${gb(it)} GB" }, plan.lteBytes()?.let { "${gb(it)} GB LTE" },
     plan.voiceSeconds()?.let { "${it / 60} min" }, plan.smsCount()?.let { "$it SMS" }
 ).joinToString(" · ")
+
+private fun expirationLabel(at: Long, now: Long) =
+    if (isExpired(at, now)) "Vencido · ${expiryLabel(at)}" else "Vigente hasta ${expiryLabel(at)}"

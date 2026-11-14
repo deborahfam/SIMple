@@ -11,6 +11,10 @@ Kotlin + Jetpack Compose presentation, MVVM, native subscription-aware USSD and 
 - Automatic parsing of recognized Spanish carrier responses and automatic encrypted saving.
 - SQLite history with AES-GCM encrypted typed payloads; keys remain in Android Keystore.
 - Dashboard and history survive app restarts. No manual balance-entry forms.
+- Resource cards show reading age and timestamps; known expired quotas are explicitly marked.
+- **Actualizar todo** queries balance, data, minutes, SMS, bonuses and recharge status sequentially
+  on the selected SIM, with category progress. **Detener** skips pending queries while allowing
+  the in-flight response to be saved. Any query or storage failure stops the sequence without retries.
 - Recharge and plan actions open the phone dialer or ETECSA website for user completion.
 - Optional sender-filtered SMS import and new-message ingestion after Android permissions.
 - No Internet, contacts or identifier permissions; no telemetry or raw carrier logs.
