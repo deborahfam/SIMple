@@ -4,6 +4,9 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+val baseVersionCode = 7
+val baseVersionName = "0.5.1"
+
 android {
     namespace = "com.simple.mobile"
     compileSdk = 36
@@ -11,8 +14,8 @@ android {
         applicationId = "com.simple.mobile"
         minSdk = 26
         targetSdk = 36
-        versionCode = 7
-        versionName = "0.5.1"
+        versionCode = providers.gradleProperty("releaseVersionCode").orNull?.toInt() ?: baseVersionCode
+        versionName = providers.gradleProperty("releaseVersionName").orNull ?: baseVersionName
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     buildFeatures { compose = true; buildConfig = true }

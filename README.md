@@ -6,7 +6,7 @@ Kotlin + Jetpack Compose presentation, MVVM, native subscription-aware USSD and 
 ## Download and update
 
 Download the APK from [GitHub Releases](https://github.com/deborahfam/SIMple/releases/latest).
-For version 0.5.1, choose **SIMple-7.apk**, open it on Android, and confirm the update.
+Choose the **SIMple-N.apk** asset in the latest release, open it on Android, and confirm the update.
 Existing SIMple users can also use **Ajustes → Actualizar SIMple → Buscar actualización**.
 This build uses the same signing key as the existing locally installed builds, so Android can
 update the app in place while preserving saved readings and recipients. Do not uninstall first.
@@ -175,12 +175,43 @@ and signing certificate against the installed app. Android then asks the user to
 installation; if necessary, enable installation from SIMple and tap Install again.
 No balance, SMS or history content is sent to GitHub. Update checks are manual only.
 
-To prepare the next update for existing local debug installations:
+### Automatic publication
 
-1. Increment versionCode and versionName in `app/build.gradle.kts`.
-2. Run `./gradlew packageDebugUpdate` on the same machine/key used for the installed APK.
-3. Create a public stable GitHub Release for the corresponding source commit and attach
-   `app/build/outputs/updates/SIMple-N.apk`. Publishing is a separate maintainer action.
+Pushing application, build, release-script or workflow changes to `main` starts
+[Publish Android update](https://github.com/deborahfam/SIMple/actions/workflows/publish-update.yml).
+Documentation and Pencil-only changes do not publish an APK; implement designs in the app first.
+You can also run the workflow manually from GitHub Actions on `main`.
+
+The workflow runs versioning tests, Android unit tests and lint, builds an APK, signs it with
+the existing installation key, verifies the certificate, and publishes a stable GitHub Release
+with `SIMple-N.apk` and `SHA256SUMS.txt`. Failed checks never publish an update.
+Android versionCode and the patch version increase automatically from existing releases;
+a higher base version in `app/build.gradle.kts` can start a new minor/major version.
+Generated versions are injected through Gradle properties without creating a commit loop.
+
+Publication is serialized. If several pushes arrive close together, GitHub may replace queued
+runs; stale builds skip publication so the latest source is published. Rerunning a published
+commit does not create another release. Failed draft uploads can be resumed with **Re-run jobs**.
+The release body records the exact source commit and reserved Android version code.
+
+Repository Actions secrets: `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`,
+`ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`. The public certificate fingerprint is stored in
+`ANDROID_SIGNING_CERT_SHA256` (Actions variable). The signing key is restored only after tests,
+kept outside the checkout and Gradle cache, and removed after signing. Never commit this key.
+Only trusted maintainers should be allowed to push workflows to `main`.
+
+This automates **GitHub publication**, not SMS/balance synchronization or silent installation.
+After the workflow finishes, use **Ajustes → Actualizar SIMple → Buscar actualización**;
+Android still asks for installation confirmation. Merely committing locally does not publish.
+
+For a local build with a specific published version:
+
+```sh
+./gradlew packageDebugUpdate -PreleaseVersionCode=8 -PreleaseVersionName=0.5.2
+```
+
+Use the same signing key as the installed app. Local default versions remain the source base
+version; official automatic release versions are recorded in GitHub Releases.
 
 Production releases should instead use a protected, stable release signing key and upload the
 signed release APK with the same naming convention. Never commit a signing key. A debug APK

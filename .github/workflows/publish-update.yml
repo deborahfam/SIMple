@@ -1,0 +1,113 @@
+name: Publish Android update
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'app/**'
+      - 'gradle/**'
+      - '*.gradle.kts'
+      - 'gradle.properties'
+      - 'gradlew*'
+      - 'scripts/**'
+      - '.github/workflows/publish-update.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: android-stable-release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: Check release version logic
+        run: python3 -m unittest discover -s scripts -p 'test_*.py'
+      - name: Allocate update version
+        id: version
+        env:
+          RELEASES_JSON: ${{ runner.temp }}/releases.json
+        run: |
+          gh api --paginate "repos/$GH_REPO/releases" --jq '.[]' | jq -s '.' > "$RELEASES_JSON"
+          python3 scripts/release_metadata.py
+      - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6
+        if: steps.version.outputs.published != 'true'
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@7ca78c16c887dc6c5f36fd6d0cb0f5c23d940e69 # v6
+        if: steps.version.outputs.published != 'true'
+      - name: Install Android SDK components
+        if: steps.version.outputs.published != 'true'
+        run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
+      - name: Build and verify
+        if: steps.version.outputs.published != 'true'
+        env:
+          VERSION_CODE: ${{ steps.version.outputs.code }}
+          VERSION_NAME: ${{ steps.version.outputs.name }}
+        run: ./gradlew assembleDebug testDebugUnitTest lintDebug -PreleaseVersionCode="$VERSION_CODE" -PreleaseVersionName="$VERSION_NAME"
+      - name: Sign compatible update and verify certificate
+        if: steps.version.outputs.published != 'true'
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          EXPECTED_CERT: ${{ vars.ANDROID_SIGNING_CERT_SHA256 }}
+          VERSION_CODE: ${{ steps.version.outputs.code }}
+        run: |
+          set -euo pipefail
+          test -n "$KEYSTORE_BASE64"
+          test -n "$EXPECTED_CERT"
+          umask 077
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/update.keystore"
+          mkdir -p "$RUNNER_TEMP/update"
+          APK="$RUNNER_TEMP/update/SIMple-$VERSION_CODE.apk"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" sign --ks "$RUNNER_TEMP/update.keystore" --ks-key-alias "$KEY_ALIAS" --ks-pass env:KEYSTORE_PASSWORD --key-pass env:KEY_PASSWORD --out "$APK" app/build/outputs/apk/debug/app-debug.apk
+          ACTUAL_CERT=$("$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs "$APK" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')
+          test "$ACTUAL_CERT" = "$EXPECTED_CERT"
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | sed -n '1p' | grep -F "package: name='com.simple.mobile' versionCode='$VERSION_CODE'"
+          cd "$RUNNER_TEMP/update"
+          sha256sum "SIMple-$VERSION_CODE.apk" > SHA256SUMS.txt
+      - name: Publish stable GitHub release
+        if: steps.version.outputs.published != 'true'
+        env:
+          VERSION_CODE: ${{ steps.version.outputs.code }}
+          VERSION_NAME: ${{ steps.version.outputs.name }}
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          set -euo pipefail
+          # A queued old run must never replace a newer main build as latest.
+          MAIN_SHA=$(gh api "repos/$GH_REPO/git/ref/heads/main" --jq .object.sha)
+          if [ "$MAIN_SHA" != "$GITHUB_SHA" ]; then
+            echo 'Main has newer changes; its workflow will publish the update.' >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          cat > "$RUNNER_TEMP/release-notes.md" <<EOF
+          Actualización automática de SIMple $VERSION_NAME.
+
+          Descarga **SIMple-$VERSION_CODE.apk** o usa **Ajustes → Actualizar SIMple → Buscar actualización**. Android pedirá confirmar la instalación. Conserva tus datos y contactos; no desinstales la app.
+
+          Compilación, pruebas unitarias, lint y firma verificados. Código fuente: $GITHUB_SHA.
+
+          <!-- simple-source:$GITHUB_SHA -->
+          <!-- simple-code:$VERSION_CODE -->
+          EOF
+          if ! gh release view "$RELEASE_TAG" > /dev/null 2>&1; then
+            gh release create "$RELEASE_TAG" --target "$GITHUB_SHA" --draft --title "SIMple $VERSION_NAME" --notes-file "$RUNNER_TEMP/release-notes.md"
+          fi
+          gh release upload "$RELEASE_TAG" "$RUNNER_TEMP/update/SIMple-$VERSION_CODE.apk" "$RUNNER_TEMP/update/SHA256SUMS.txt" --clobber
+          gh release edit "$RELEASE_TAG" --draft=false --latest
+          echo "Publicado: https://github.com/$GH_REPO/releases/tag/$RELEASE_TAG" >> "$GITHUB_STEP_SUMMARY"
+      - name: Remove signing material
+        if: always()
+        run: rm -f "$RUNNER_TEMP/update.keystore"

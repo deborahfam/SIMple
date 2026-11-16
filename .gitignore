@@ -8,3 +8,6 @@ local.properties
 .externalNativeBuild/
 .cxx/
 .kotlin/
+
+# Python release tooling
+__pycache__/
