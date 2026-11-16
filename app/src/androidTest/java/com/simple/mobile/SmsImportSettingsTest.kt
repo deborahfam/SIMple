@@ -15,6 +15,22 @@ class SmsImportSettingsTest {
         context.getSharedPreferences("test-sms-settings", Context.MODE_PRIVATE).edit().clear().commit()
         return SmsImportSettings(context, "test-sms-settings")
     }
+    @Test fun cursorIsScopedPersistentAndCannotAdvanceAfterOptOut() {
+        val settings = settings()
+        settings.setEnabled(true)
+        val token = settings.beginSync()!!
+        settings.checkpoint(token, "scope-a", 120, true)
+        assertEquals(120L, settings.inboxCursor("scope-a"))
+        assertNull(settings.inboxCursor("scope-b"))
+        assertTrue(settings.state.value.moreInbox)
+        val reopened = SmsImportSettings(ApplicationProvider.getApplicationContext(), "test-sms-settings")
+        assertEquals(120L, reopened.inboxCursor("scope-a"))
+        settings.setEnabled(false)
+        settings.checkpoint(token, "scope-a", 999, false)
+        assertEquals(120L, settings.inboxCursor("scope-a"))
+        settings.clearSummary()
+        assertNull(settings.inboxCursor("scope-a"))
+    }
     @Test fun optOutInvalidatesQueuedWorkEvenAfterReenabling() {
         val settings = settings()
         assertNull(settings.token())

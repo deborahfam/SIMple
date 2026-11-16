@@ -129,9 +129,12 @@ class EncryptedReadingStore(context: Context, name: String = "readings.db") : SQ
         }.generateKey()
     }
     @Synchronized fun save(subscription: Int, reading: CarrierReading, eventId: String? = null): Boolean {
-        // Classify damaged rows before retention can remove old records.
-        history()
         val id = eventId?.let { UUID.nameUUIDFromBytes(it.toByteArray()).toString() } ?: UUID.randomUUID().toString()
+        // Duplicate SMS never decrypt or rewrite history, nor trigger retention.
+        if (eventId != null && readableDatabase.rawQuery("SELECT 1 FROM readings WHERE id=?", arrayOf(id)).use { it.moveToFirst() }) return false
+        // Only retention needs a complete damage classification before inserting.
+        val count = readableDatabase.rawQuery("SELECT COUNT(*) FROM readings WHERE damaged=0", null).use { it.moveToFirst(); it.getLong(0) }
+        if (count >= 300) history()
         val json = JSONObject().put("subscription", subscription).put("query", reading.query().name)
             .put("at", reading.receivedAt()).put("balance", reading.balanceCup()).put("voice", reading.voiceSeconds() as Any?)
             .put("sms", reading.smsCount() as Any?).put("expiry", reading.expiresAt() as Any?)
@@ -165,11 +168,12 @@ class EncryptedReadingStore(context: Context, name: String = "readings.db") : SQ
         val rows = mutableListOf<Entry>()
         val damaged = mutableListOf<String>()
         val recovered = mutableListOf<String>()
-        readableDatabase.rawQuery("SELECT id,iv,payload FROM readings ORDER BY rowid DESC", null).use { cursor ->
+        val decryptionKey = key()
+        readableDatabase.rawQuery("SELECT id,iv,payload,damaged FROM readings ORDER BY rowid DESC", null).use { cursor ->
             while (cursor.moveToNext()) {
                 try {
                 val cipher = Cipher.getInstance("AES/GCM/NoPadding").apply {
-                    init(Cipher.DECRYPT_MODE, key(), GCMParameterSpec(128, cursor.getBlob(1)))
+                    init(Cipher.DECRYPT_MODE, decryptionKey, GCMParameterSpec(128, cursor.getBlob(1)))
                     updateAAD(cursor.getString(0).toByteArray())
                 }
                 val bytes = cipher.doFinal(cursor.getBlob(2))
@@ -187,7 +191,7 @@ class EncryptedReadingStore(context: Context, name: String = "readings.db") : SQ
                     json.longOrNull("expiry"), json.stringOrNull("rechargeReceived"), json.stringOrNull("rechargeAvailable"),
                     json.optString("source", "USSD"), json.optJSONObject("purchase")?.let { p -> CarrierReading.Purchase(p.longOrNull("bytes"), p.longOrNull("lte"), p.longOrNull("voice"), p.longOrNull("sms"), p.getInt("days"), p.getBoolean("firstUse")) },
                     json.longOrNull("closes"), json.longOrNull("nextRecharge")))
-                recovered += cursor.getString(0)
+                if (cursor.getInt(3) != 0) recovered += cursor.getString(0)
                 } catch (_: javax.crypto.AEADBadTagException) { damaged += cursor.getString(0) }
                   catch (_: org.json.JSONException) { damaged += cursor.getString(0) }
                   catch (_: IllegalArgumentException) { damaged += cursor.getString(0) }
@@ -195,7 +199,7 @@ class EncryptedReadingStore(context: Context, name: String = "readings.db") : SQ
         }
         writableDatabase.beginTransaction()
         try {
-            damaged.forEach { writableDatabase.execSQL("UPDATE readings SET damaged=1 WHERE id=?", arrayOf(it)) }
+            damaged.forEach { writableDatabase.execSQL("UPDATE readings SET damaged=1 WHERE id=? AND damaged=0", arrayOf(it)) }
             recovered.forEach { writableDatabase.execSQL("UPDATE readings SET damaged=0 WHERE id=?", arrayOf(it)) }
             writableDatabase.setTransactionSuccessful()
         } finally { writableDatabase.endTransaction() }

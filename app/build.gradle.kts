@@ -4,8 +4,8 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
-val baseVersionCode = 9
-val baseVersionName = "0.6.0"
+val baseVersionCode = 10
+val baseVersionName = "0.6.1"
 
 android {
     namespace = "com.simple.mobile"

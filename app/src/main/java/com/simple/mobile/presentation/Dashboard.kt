@@ -3,6 +3,8 @@
 package com.simple.mobile.presentation
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
@@ -52,12 +54,13 @@ private val Teal: Color @Composable get() = if (isSystemInDarkTheme()) Color(0xF
 private val Navy = Color(0xFF35234F)
 
 @Composable fun Dashboard(model: DashboardViewModel, updates: com.simple.mobile.data.updates.AppUpdates, onInstallUpdate: () -> Unit, onConnect: () -> Unit,
-    onQuery: (CubacelQuery) -> Unit, onRefreshAll: () -> Unit, onReminders: (Boolean) -> Unit, onNotificationSettings: () -> Unit, onSmsEnabled: (Boolean) -> Unit, onSyncSms: () -> Unit, onSettings: () -> Unit, onAppSettings: () -> Unit,
+    onQuery: (CubacelQuery) -> Unit, onRefreshAll: () -> Unit, onRefreshNeeded: () -> Unit, onRetryQueries: () -> Unit, onTransfermovil: () -> Unit, onRescanSms: () -> Unit, onReminders: (Boolean) -> Unit, onNotificationSettings: () -> Unit, onSmsEnabled: (Boolean) -> Unit, onSyncSms: () -> Unit, onSettings: () -> Unit, onAppSettings: () -> Unit,
     onDial: (String) -> Unit, onRechargeSite: () -> Unit, onPickContact: () -> Unit,
     onTransfer: (com.simple.mobile.domain.transfer.TransferDraft) -> Boolean) {
     val state by model.state.collectAsStateWithLifecycle()
     val update by updates.state.collectAsStateWithLifecycle()
     val automaticUpdates by updates.automatic.collectAsStateWithLifecycle()
+    val entries = remember(state.entries, state.selected) { state.entries.filter { it.subscription == state.selected } }
     val stacked = LocalConfiguration.current.screenWidthDp < 360 || LocalDensity.current.fontScale > 1.2f
     val now by produceState(System.currentTimeMillis()) {
         while (true) { value = System.currentTimeMillis(); kotlinx.coroutines.delay(30_000) }
@@ -65,6 +68,7 @@ private val Navy = Color(0xFF35234F)
     var historyCategory by rememberSaveable { mutableStateOf<String?>(null) }
     var historyDays by rememberSaveable { mutableIntStateOf(0) }
     var historyLimit by rememberSaveable { mutableIntStateOf(25) }
+    val filteredHistory = remember(entries, historyCategory, historyDays, now) { HistoryFilter.apply(entries, historyCategory, historyDays, now) }
     LaunchedEffect(state.selected, historyCategory, historyDays) { historyLimit = 25 }
     var page by rememberSaveable { mutableIntStateOf(0) }
     val homeScroll = rememberLazyListState()
@@ -221,7 +225,6 @@ private val Navy = Color(0xFF35234F)
                             }
                         }
                     }
-                    val entries = state.entries.filter { it.subscription == state.selected }
                     if (page == 0) {
                         val balance = entries.firstOrNull { it.reading.query() == CubacelQuery.BALANCE && it.reading.balanceCup() != null }?.reading
                         val data = entries.firstOrNull { it.reading.query() == CubacelQuery.DATA }?.reading
@@ -301,16 +304,21 @@ private val Navy = Color(0xFF35234F)
                                         }
                                     } }
                                 }
-                                Button(onClick = onRefreshAll, enabled = enabled,
+                                Button(onClick = onRefreshNeeded, enabled = enabled,
                                     colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Navy,
                                         disabledContainerColor = Color(0xFF705782), disabledContentColor = Color(0xFFD9CBE4)),
                                     shape = RoundedCornerShape(14.dp), contentPadding = PaddingValues(14.dp), modifier = Modifier.fillMaxWidth()) {
                                     if (state.busy) CircularProgressIndicator(Modifier.size(19.dp), color = Color(0xFFD9CBE4), strokeWidth = 2.dp)
                                     else Icon(Icons.Outlined.Refresh, null, modifier = Modifier.size(19.dp))
                                     Spacer(Modifier.width(8.dp))
-                                    Text(if (state.busy) "Actualizando…" else "Actualizar todo", fontWeight = FontWeight.Bold)
+                                    Text(if (state.busy) "Actualizando…" else "Actualizar lo necesario", fontWeight = FontWeight.Bold)
                                 }
-
+                                Text("Omite lecturas válidas de los últimos 15 minutos.", color = Mint, fontSize = 12.sp)
+                                TextButton(onClick = onRefreshAll, enabled = enabled) { Text("Actualizar todo de nuevo", color = Mint) }
+                                val pending = state.pendingQueries[state.selected].orEmpty()
+                                if (pending.isNotEmpty() && !state.busy) OutlinedButton(onClick = onRetryQueries, enabled = enabled) {
+                                    Text("Reintentar pendientes (${pending.size})", color = Mint)
+                                }
                             }
                         }
                         if (state.busy) item {
@@ -372,7 +380,7 @@ private val Navy = Color(0xFF35234F)
                         item { PrivacyFooter() }
                     } else if (page == 1) {
                         item { TransferHistory(state.transfers.filter { it.subscription == state.selected }, state.transferSaving || state.managingLine, model::transferResult) }
-                        val filtered = HistoryFilter.apply(entries, historyCategory, historyDays, now)
+                        val filtered = filteredHistory
                         item {
                             WhiteCard {
                                 Text("Filtrar historial", fontWeight = FontWeight.Bold)
@@ -433,7 +441,7 @@ private val Navy = Color(0xFF35234F)
                                 SettingsRow("Permisos de la aplicación", Icons.Outlined.Security, onAppSettings)
                             }
                         }
-                        item { SmsConnectionCard(state, onSmsEnabled, onSyncSms, onAppSettings) }
+                        item { SmsConnectionCard(state, onSmsEnabled, onSyncSms, onAppSettings, onRescanSms) }
                         item {
                             WhiteCard {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -498,8 +506,11 @@ private val Navy = Color(0xFF35234F)
             confirmButton = { TextButton(onClick = { buyPlans = false; onDial("*133#") }) { Text("Abrir menú de planes") } },
             dismissButton = { TextButton(onClick = { buyPlans = false }) { Text("Cancelar") } })
         if (recharge) AlertDialog(onDismissRequest = { recharge = false }, title = { Text("Recarga tu línea") },
-            text = { Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            text = { Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text("Elige cómo continuar. Confirma la SIM y cualquier pago en la aplicación que se abra.", fontSize = 13.sp)
+                Text(state.displayLines.firstOrNull { it.subscription == state.selected }?.label ?: "Selecciona la línea que deseas recargar", fontWeight = FontWeight.Bold)
+                Text("En Transfermóvil: elige tu banco (Metropolitano, BPA o BANDEC), autentícate y abre Operaciones → Recarga Saldo Móvil. Introduce y confirma allí el número, importe y cuenta. SIMple no transmite el PIN ni el número de la SIM.", fontSize = 13.sp)
+                Button(onClick = { recharge = false; onTransfermovil() }, modifier = Modifier.fillMaxWidth(), enabled = !state.busy) { Text("Recargar con Transfermóvil") }
                 OutlinedButton(onClick = { recharge = false; confirmDial = "*666" }, modifier = Modifier.fillMaxWidth()) { Text("Usar tarjeta de recarga") }
                 OutlinedButton(onClick = { recharge = false; onRechargeSite() }, modifier = Modifier.fillMaxWidth()) { Text("Vías oficiales de ETECSA") }
             } }, confirmButton = { TextButton(onClick = { recharge = false }) { Text("Cerrar") } })
@@ -650,7 +661,7 @@ private fun expirationLabel(at: Long, now: Long) =
     if (isExpired(at, now)) "Vencido · ${expiryLabel(at)}" else "Vigente hasta ${expiryLabel(at)}"
 
 @Composable private fun SmsConnectionCard(state: DashboardState, onEnabled: (Boolean) -> Unit,
-                                         onSync: () -> Unit, onPermissions: () -> Unit) {
+                                         onSync: () -> Unit, onPermissions: () -> Unit, onRescan: () -> Unit) {
     val status = state.smsStatus
     val permissionsReady = state.permission && state.smsReadAllowed && state.smsReceiveAllowed
     WhiteCard {
@@ -679,6 +690,9 @@ private fun expirationLabel(at: Long, now: Long) =
             Text("Se necesita acceso al teléfono, lectura de SMS y recepción de mensajes para la conexión completa.", fontSize = 12.sp, color = Muted)
             TextButton(onClick = onPermissions) { Text("Revisar permisos en Android") }
         }
+        if (status.moreInbox) Text("Quedan mensajes nuevos por revisar. Sincroniza de nuevo para continuar.", fontSize = 13.sp)
+        Text("La primera revisión incluye hasta 150 mensajes del operador; después se revisan solo los nuevos.", color = Muted, fontSize = 12.sp)
+        TextButton(onClick = onRescan, enabled = status.enabled && permissionsReady && !status.syncing && !state.managingLine) { Text("Revisar últimos 150 mensajes") }
         OutlinedButton(onClick = onSync,
             enabled = status.enabled && state.permission && state.smsReadAllowed && !status.syncing && !state.managingLine,
             modifier = Modifier.fillMaxWidth()) { Text(if (status.syncing) "Sincronizando…" else "Sincronizar ahora") }

@@ -29,18 +29,27 @@ object CarrierSmsSync {
         val hash = java.security.MessageDigest.getInstance("SHA-256").digest(body.toByteArray()).joinToString("") { "%02x".format(it) }
         return "message:$subscription:$at:$hash"
     }
-    fun syncInbox(app: SimpleApplication, token: Long): Int {
+    fun syncInbox(app: SimpleApplication, token: Long, rescan: Boolean = false): Int {
         if (app.checkSelfPermission(Manifest.permission.READ_SMS) != PackageManager.PERMISSION_GRANTED) throw SecurityException()
         val valid = SimRepository(app).activeSubscriptions().filter { cubacel(app, it.subscriptionId) }.map { it.subscriptionId }.toSet()
         if (valid.isEmpty()) return 0
         var count = 0
+        val scope = java.security.MessageDigest.getInstance("SHA-256").digest(valid.sorted().joinToString(",").toByteArray())
+            .joinToString("") { "%02x".format(it) }
+        val previous = if (rescan) null else app.smsImport.inboxCursor(scope)
+        var highest = previous ?: -1L
+        var more = false
         // Selection is applied by the provider, before bodies are read into the app process.
         app.contentResolver.query(Telephony.Sms.Inbox.CONTENT_URI, arrayOf("_id", "address", "body", "date", "sub_id", "date_sent"),
-            "LOWER(address) IN (?,?,?,?)", senders.toTypedArray(), "date DESC").let { cursor ->
+            "LOWER(address) IN (?,?,?,?)" + if (previous != null) " AND _id > ?" else "",
+            (senders.toList() + listOfNotNull(previous?.toString())).toTypedArray(),
+            if (previous == null) "_id DESC" else "_id ASC").let { cursor ->
             checkNotNull(cursor) { "SMS provider unavailable" }
             cursor.use {
             var seen = 0
-            while (app.smsImport.isCurrent(token) && cursor.moveToNext() && seen++ < 150) {
+            while (app.smsImport.isCurrent(token) && seen < 150 && cursor.moveToNext()) {
+                seen++
+                highest = maxOf(highest, cursor.getLong(0))
                 val sub = cursor.getInt(4)
                 // Do not silently attribute historical messages with an unknown SIM to a current line.
                 if (sub !in valid) continue
@@ -48,8 +57,10 @@ object CarrierSmsSync {
                 val at = cursor.getLong(5).takeIf { it > 0 } ?: cursor.getLong(3)
                 count += ingest(app, cursor.getString(1), body, sub, at, eventId(sub, at, body), token)
             }
+            more = previous != null && seen == 150 && cursor.moveToNext()
             }
         }
+        if (highest >= 0) app.smsImport.checkpoint(token, scope, highest, more)
         return count
     }
 }
@@ -71,7 +82,7 @@ class CarrierSmsReceiver : BroadcastReceiver() {
                 val count = CarrierSmsSync.ingest(app, messages.first().originatingAddress, body, subscription,
                     messages.first().timestampMillis, CarrierSmsSync.eventId(subscription, messages.first().timestampMillis, body), token)
                 app.smsImport.received(token, count)
-                app.refreshReadings()
+                if (count > 0) app.refreshReadings()
             } catch (_: Exception) { /* No sensitive message or exception logging. */ }
             finally { pending.finish() }
         }

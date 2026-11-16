@@ -11,6 +11,24 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class EncryptedStoreTest {
+    @Test fun duplicateSmsSkipsHistoryDecryptionAndPreservesDamagedRows() {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val name = "test-duplicate-fast-path.db"
+        context.deleteDatabase(name)
+        EncryptedReadingStore(context, name).use { store ->
+            val reading = CubacelParser().parse(CubacelQuery.BALANCE, "Saldo: 25 CUP", 123L)
+            assertTrue(store.save(77, reading, "same-event"))
+            store.writableDatabase.execSQL("UPDATE readings SET payload=zeroblob(32)")
+            assertFalse(store.save(77, reading, "same-event"))
+            store.readableDatabase.rawQuery("SELECT damaged FROM readings", null).use {
+                assertTrue(it.moveToFirst()); assertEquals(0, it.getInt(0))
+            }
+            assertTrue(store.history().isEmpty())
+            assertEquals(1, store.unreadableCount)
+        }
+        context.deleteDatabase(name)
+    }
+
     @Test fun rechargeDatesSurviveRenameReopenAndRespectLineDeletion() {
         val context = ApplicationProvider.getApplicationContext<android.content.Context>()
         val name = "test-recharge-dates.db"

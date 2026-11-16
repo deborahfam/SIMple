@@ -74,6 +74,13 @@ class MainActivity : ComponentActivity() {
                 onConnect = { permissions.launch(arrayOf(Manifest.permission.READ_PHONE_STATE, Manifest.permission.CALL_PHONE)) },
                 onQuery = { query -> requestQuery(query.name) },
                 onRefreshAll = { requestQuery("ALL") },
+                onRefreshNeeded = { requestQuery("SMART") },
+                onRetryQueries = { requestQuery("RETRY") },
+                onTransfermovil = {
+                    val launch = packageManager.getLaunchIntentForPackage("cu.etecsa.cubacel.tr.tm")
+                    if (launch == null) model.notify("Transfermóvil no está instalado o no se puede abrir. Puedes obtenerlo desde la web oficial de ETECSA.")
+                    else openCarrier(launch, model.state.value.selected)
+                },
                 onReminders = { enabled ->
                     if (!enabled) model.setReminders(false)
                     else if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED)
@@ -86,6 +93,7 @@ class MainActivity : ComponentActivity() {
                     else smsPermissions.launch(arrayOf(Manifest.permission.READ_PHONE_STATE, Manifest.permission.READ_SMS, Manifest.permission.RECEIVE_SMS))
                 },
                 onSyncSms = { model.syncCarrierSms() },
+                onRescanSms = { model.syncCarrierSms(rescan = true) },
                 onSettings = { open(Intent(Settings.ACTION_WIRELESS_SETTINGS)) },
                 onAppSettings = { open(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName"))) },
                 onDial = { code -> openCarrier(Intent(Intent.ACTION_DIAL, Uri.fromParts("tel", code, null)), model.state.value.selected) },
@@ -160,7 +168,12 @@ class MainActivity : ComponentActivity() {
             return true
         }
         model.select(pendingSubscription)
-        if (query == "ALL") model.refreshAll() else CubacelQuery.values().firstOrNull { it.name == query }?.let { model.check(it) }
+        when (query) {
+            "ALL" -> model.refreshAll()
+            "SMART" -> model.refreshNeeded()
+            "RETRY" -> model.retryQueries()
+            else -> CubacelQuery.values().firstOrNull { it.name == query }?.let { model.check(it) }
+        }
         return true
     }
     override fun onSaveInstanceState(outState: Bundle) {

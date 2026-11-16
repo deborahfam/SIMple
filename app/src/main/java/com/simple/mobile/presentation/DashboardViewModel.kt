@@ -38,6 +38,7 @@ data class DashboardState(
     val unreadableCount: Int = 0, val loading: Boolean = true, val busy: Boolean = false,
     val message: String? = null, val permission: Boolean = false,
     val storageReady: Boolean = false,
+    val pendingQueries: Map<Int, List<CubacelQuery>> = emptyMap(),
     val activeQuery: CubacelQuery? = null, val queryNumber: Int = 0, val queryTotal: Int = 0,
     val querySubscription: Int = -1, val stopRequested: Boolean = false,
     val smsStatus: SmsSyncStatus = SmsSyncStatus(), val smsReadAllowed: Boolean = false, val smsReceiveAllowed: Boolean = false,
@@ -191,19 +192,20 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
         app.smsImport.setEnabled(true)
         syncCarrierSms()
     }
-    fun syncCarrierSms(showMessage: Boolean = true) {
+    fun syncCarrierSms(showMessage: Boolean = true, rescan: Boolean = false) {
         if (mutable.value.managingLine) return
         val token = app.smsImport.beginSync() ?: return
         worker.execute {
             var count = 0
             var error: String? = null
             try {
-                count = com.simple.mobile.data.telephony.CarrierSmsSync.syncInbox(app, token)
-                app.refreshReadings()
-                if (!disposed && showMessage && app.smsImport.isCurrent(token)) notify("Sincronización terminada: $count lecturas nuevas añadidas.")
+                count = com.simple.mobile.data.telephony.CarrierSmsSync.syncInbox(app, token, rescan)
+                if (count > 0) app.refreshReadings()
+                if (!disposed && showMessage && app.smsImport.isCurrent(token)) notify("$count lecturas nuevas añadidas." + if (app.smsImport.state.value.moreInbox) " Quedan mensajes nuevos: pulsa Sincronizar ahora para continuar." else " Revisión terminada.")
             } catch (_: SecurityException) { error = "Faltan permisos para sincronizar los SMS. Revisa los permisos en Android." }
             catch (_: Exception) { error = "No se pudo completar la sincronización. Las lecturas guardadas se conservan." }
             finally {
+                if (error != null) try { app.refreshReadings() } catch (_: Exception) { /* Keep last visible readings on storage failure. */ }
                 app.smsImport.finishSync(token, count, error)
                 if (!disposed) {
                     refreshSmsPermissions()
@@ -214,17 +216,21 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
     }
     fun check(query: CubacelQuery) = startQueries(listOf(query))
     fun refreshAll() = startQueries(RefreshSequence.ALL)
+    fun refreshNeeded() = startQueries(RefreshPolicy.needed(mutable.value.entries, mutable.value.selected, System.currentTimeMillis()))
+    fun retryQueries() = startQueries(mutable.value.pendingQueries[mutable.value.selected].orEmpty())
     fun stopRefresh() { mutable.update { if (it.busy) it.copy(stopRequested = true) else it } }
 
     private fun startQueries(queries: List<CubacelQuery>) {
         val now = mutable.value
         if (now.busy || now.managingLine) return
+        if (queries.isEmpty()) { notify("No hay consultas pendientes. Las lecturas tienen menos de 15 minutos; puedes forzar Actualizar todo."); return }
         if (!now.storageReady) { notify("El almacenamiento no está disponible. Reintenta desde Ajustes antes de consultar."); return }
         val line = now.lines.firstOrNull { it.subscription == now.selected }
         if (line == null) { notify("Conecta y selecciona una SIM activa."); return }
         if (!line.cubacel) { notify("Selecciona tu SIM Cubacel. No enviaremos códigos a otro operador."); return }
         mutable.update { it.copy(busy = true, queryTotal = queries.size, queryNumber = 0,
-            querySubscription = line.subscription, stopRequested = false) }
+            querySubscription = line.subscription, stopRequested = false,
+            pendingQueries = it.pendingQueries + (line.subscription to (it.pendingQueries[line.subscription].orEmpty() + queries).distinct())) }
         viewModelScope.launch {
             var completed = 0
             try {
@@ -246,6 +252,8 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
                         app.refreshReadings()
                     }
                     completed++
+                    mutable.update { old -> old.copy(pendingQueries = old.pendingQueries +
+                        (line.subscription to RefreshPolicy.remaining(old.pendingQueries[line.subscription].orEmpty(), setOf(query)))) }
                 }
                 finish(if (mutable.value.stopRequested) "Actualización detenida: $completed de ${queries.size} consultas guardadas."
                     else "Información actualizada: $completed de ${queries.size} consultas guardadas en tu móvil.")

@@ -87,7 +87,7 @@ adb -s <emulator> shell am instrument -w com.simple.mobile.test/androidx.test.ru
 ## SMS synchronization
 
 Enable the switch in **Mensajes de Cubacel** and allow the Android SMS permission request. The app queries
-only ETECSA/Cubacel/222/2266 senders (latest 150), matches each message to an active Cubacel
+only ETECSA/Cubacel/222/2266 senders (initial review: latest 150; subsequent reviews: new provider IDs), matches each message to an active Cubacel
 subscription, parses on-device, and saves typed values. New carrier messages use the same parser.
 Purchase receipts store purchased quotas separately from measured remaining allowances; a debit,
 transfer or credited recharge is never substituted for the current balance. Promotions are rejected.
@@ -285,3 +285,29 @@ Settings also offers **Avisar de nuevas versiones al abrir**, disabled by defaul
 SIMple checks public GitHub Releases at most once per 24 hours on app open and shows an in-app
 notice. Downloads and Android installation still require user action. This is not a background
 notification service.
+
+## Faster refresh and Transfermóvil (0.6.1)
+
+- **Actualizar lo necesario** queries missing, expired or at-least-15-minute-old resources for
+  the selected SIM. Detected purchases/recharges also invalidate older measurements. The
+  separate **Actualizar todo de nuevo** action always forces the six read-only carrier queries.
+- Failed/stopped sequences retain their uncompleted queries in memory, separately for each SIM.
+  **Reintentar pendientes** only runs those queries. Modem calls remain serialized; a timeout
+  never triggers an automatic retry, and an ongoing modem session can still report busy.
+- SMS import saves a provider-ID checkpoint scoped to the active Cubacel subscription set.
+  Initial/manual re-scans cover the latest 150 matching messages; incremental runs process
+  up to 150 new IDs in ascending order and show when another batch remains. A changed SIM set
+  starts a fresh review. **Revisar últimos 150 mensajes** also handles restored/reassigned
+  provider IDs and late corrections. Clearing local history resets the checkpoint. Cancellation
+  or a failed pass cannot advance it. The message timestamp is still used for reading freshness.
+- Duplicate SMS are rejected by indexed ID before encryption/decryption or retention work.
+  Full damage classification before saving is only necessary when retention may delete records.
+  History reads reuse one Keystore key handle and update recovery flags only when needed.
+  SIM/history filters reuse the in-memory readings; empty SMS syncs do not reload all history.
+- **Recargar → Recargar con Transfermóvil** opens the installed official package through its
+  launcher, without private activities or guessed deep links. Instructions cover bank selection,
+  authentication and **Operaciones → Recarga Saldo Móvil**. The user enters the recipient,
+  amount and account in Transfermóvil. SIMple sends no PIN, account, amount or phone number.
+  On return it offers a fresh query for the original SIM; returning does not confirm payment.
+  If Transfermóvil cannot be opened, an explanatory message is shown and ETECSA's official
+  recharge website remains available. PIN storage is not included.

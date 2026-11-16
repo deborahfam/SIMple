@@ -6,7 +6,7 @@ import kotlinx.coroutines.flow.asStateFlow
 
 /** Import consent and status are shared by the UI, inbox sync and receiver. No message content is stored here. */
 data class SmsSyncStatus(val enabled: Boolean = false, val syncing: Boolean = false,
-                         val lastAt: Long? = null, val lastAdded: Int = 0, val error: String? = null)
+                         val lastAt: Long? = null, val lastAdded: Int = 0, val moreInbox: Boolean = false, val error: String? = null)
 
 class SmsImportSettings(context: Context, preferenceName: String = "features") {
     private val prefs = context.getSharedPreferences(preferenceName, Context.MODE_PRIVATE)
@@ -41,9 +41,16 @@ class SmsImportSettings(context: Context, preferenceName: String = "features") {
     @Synchronized fun received(token: Long, count: Int) {
         if (isCurrent(token) && count > 0) record(count)
     }
+    @Synchronized fun inboxCursor(scope: String): Long? =
+        prefs.getLong("inbox_id", -1).takeIf { it >= 0 && prefs.getString("inbox_scope", null) == scope }
+    @Synchronized fun checkpoint(token: Long, scope: String, id: Long, more: Boolean) {
+        if (!isCurrent(token)) return
+        prefs.edit().putString("inbox_scope", scope).putLong("inbox_id", id).apply()
+        mutable.value = mutable.value.copy(moreInbox = more)
+    }
     @Synchronized fun clearSummary() {
-        prefs.edit().remove("sms_last_at").remove("sms_last_added").apply()
-        mutable.value = mutable.value.copy(lastAt = null, lastAdded = 0, error = null)
+        prefs.edit().remove("sms_last_at").remove("sms_last_added").remove("inbox_id").remove("inbox_scope").apply()
+        mutable.value = mutable.value.copy(lastAt = null, lastAdded = 0, moreInbox = false, error = null)
     }
     private fun record(count: Int) {
         val at = System.currentTimeMillis()
