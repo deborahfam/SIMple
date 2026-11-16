@@ -2,6 +2,7 @@
 
 package com.simple.mobile.presentation
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
@@ -10,6 +11,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -29,6 +31,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -51,7 +55,7 @@ private val Navy = Color(0xFF35234F)
     onDial: (String) -> Unit, onRechargeSite: () -> Unit) {
     val state by model.state.collectAsStateWithLifecycle()
     val update by updates.state.collectAsStateWithLifecycle()
-    val stacked = LocalConfiguration.current.screenWidthDp < 340 || LocalDensity.current.fontScale > 1.2f
+    val stacked = LocalConfiguration.current.screenWidthDp < 360 || LocalDensity.current.fontScale > 1.2f
     val now by produceState(System.currentTimeMillis()) {
         while (true) { value = System.currentTimeMillis(); kotlinx.coroutines.delay(30_000) }
     }
@@ -60,8 +64,12 @@ private val Navy = Color(0xFF35234F)
     var historyLimit by rememberSaveable { mutableIntStateOf(25) }
     LaunchedEffect(state.selected, historyCategory, historyDays) { historyLimit = 25 }
     var page by rememberSaveable { mutableIntStateOf(0) }
+    val homeScroll = rememberLazyListState()
+    val historyScroll = rememberLazyListState()
+    val settingsScroll = rememberLazyListState()
     var showPackages by rememberSaveable { mutableStateOf(false) }
     var recharge by remember { mutableStateOf(false) }
+    var buyPlans by remember { mutableStateOf(false) }
     var confirmDial by remember { mutableStateOf<String?>(null) }
     var delete by remember { mutableStateOf(false) }
     var deleteSubscription by remember { mutableStateOf<Int?>(null) }
@@ -70,7 +78,7 @@ private val Navy = Color(0xFF35234F)
     var nickname by remember { mutableStateOf("") }
     val snackbar = remember { SnackbarHostState() }
     LaunchedEffect(state.message) { state.message?.let { snackbar.showSnackbar(it); model.dismissMessage() } }
-    MaterialTheme(colorScheme = if (isSystemInDarkTheme()) darkColorScheme(primary = Teal, background = Paper, surface = Color(0xFF282231), onSurface = Ink, onBackground = Ink) else lightColorScheme(primary = Teal, secondary = Navy, background = Paper, surface = Color.White,
+    MaterialTheme(colorScheme = if (isSystemInDarkTheme()) darkColorScheme(primary = Teal, background = Paper, surface = Color(0xFF241F2E), secondaryContainer = Color(0xFF383044), onSecondaryContainer = Ink, outlineVariant = Color(0xFF40374D), onSurface = Ink, onBackground = Ink) else lightColorScheme(primary = Teal, secondary = Navy, background = Paper, surface = Color.White, secondaryContainer = Color(0xFFEEE8F7), onSecondaryContainer = Ink, outlineVariant = Color(0xFFE8E2EF),
         onSurface = Ink, onBackground = Ink)) {
         Scaffold(containerColor = Paper, snackbarHost = { SnackbarHost(snackbar) }, bottomBar = {
             NavigationBar(containerColor = MaterialTheme.colorScheme.surface, tonalElevation = 0.dp) {
@@ -82,8 +90,10 @@ private val Navy = Color(0xFF35234F)
             }
         }) { padding ->
             Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.TopCenter) {
-                LazyColumn(Modifier.widthIn(max = 640.dp).fillMaxWidth(), contentPadding = PaddingValues(horizontal = 18.dp, vertical = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                LazyColumn(Modifier.widthIn(max = 640.dp).fillMaxWidth(),
+                    state = when (page) { 1 -> historyScroll; 2 -> settingsScroll; else -> homeScroll },
+                    contentPadding = PaddingValues(horizontal = 20.dp, vertical = 20.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     item {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Box(Modifier.size(38.dp).clip(RoundedCornerShape(12.dp)).background(Navy), contentAlignment = Alignment.Center) {
@@ -94,14 +104,23 @@ private val Navy = Color(0xFF35234F)
                             Spacer(Modifier.weight(1f))
                             if (!stacked) Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = CircleShape) {
                                 Row(Modifier.padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Box(Modifier.size(5.dp).background(Teal, CircleShape)); Spacer(Modifier.width(5.dp))
+                                    Icon(Icons.Outlined.Lock, null, modifier = Modifier.size(13.dp), tint = Teal); Spacer(Modifier.width(5.dp))
                                     Text("PRIVADO", color = Teal, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                 }
                             }
                         }
                     }
-                    if (page != 0) item {
-                        Text(if (page == 1) "Historial" else "Ajustes", fontSize = 26.sp, fontWeight = FontWeight.Bold, color = Ink)
+                    item {
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(when (page) { 1 -> "Tu historial"; 2 -> "A tu manera"; else -> "Tu línea, de un vistazo" },
+                                fontSize = 28.sp, lineHeight = 34.sp, fontWeight = FontWeight.Bold, color = Ink,
+                                modifier = Modifier.semantics { heading() })
+                            Text(when (page) {
+                                1 -> "Revisa tus consultas y mensajes guardados."
+                                2 -> "Conexiones, avisos y privacidad."
+                                else -> "Saldo y recursos de tu SIM Cubacel."
+                            }, fontSize = 14.sp, lineHeight = 20.sp, color = Muted)
+                        }
                     }
                     item {
                         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -123,7 +142,10 @@ private val Navy = Color(0xFF35234F)
                             LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                                 items(state.displayLines, key = { it.subscription }) { line ->
                                     val selected = state.selected == line.subscription
-                                    Surface(onClick = { model.select(line.subscription) }, shape = RoundedCornerShape(18.dp),
+                                    Surface(onClick = { model.select(line.subscription) },
+                                        modifier = Modifier.semantics { this.selected = selected },
+                                        border = BorderStroke(1.dp, if (selected) Navy else MaterialTheme.colorScheme.outlineVariant),
+                                        shape = RoundedCornerShape(18.dp),
                                         color = if (selected) Navy else MaterialTheme.colorScheme.surface) {
                                         Row(Modifier.padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                                             Icon(Icons.Outlined.SimCard, null, tint = if (selected) Mint else Muted, modifier = Modifier.size(21.dp))
@@ -167,28 +189,35 @@ private val Navy = Color(0xFF35234F)
                         val voice = entries.firstOrNull { it.reading.query() == CubacelQuery.VOICE }?.reading
                         val sms = entries.firstOrNull { it.reading.query() == CubacelQuery.SMS }?.reading
                         val bonus = entries.firstOrNull { it.reading.query() == CubacelQuery.BONUSES_AND_USD_PLANS }?.reading
+                        val selectedLine = state.displayLines.firstOrNull { it.subscription == state.selected }
                         val enabled = !state.busy && !state.managingLine && state.lines.any { it.subscription == state.selected && it.cubacel } && state.storageReady
                         item {
                             Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(26.dp))
-                                .background(Brush.linearGradient(listOf(Navy, Color(0xFF65468D)))).padding(20.dp),
-                                verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                .background(Brush.linearGradient(listOf(Navy, Color(0xFF65468D)))).padding(24.dp),
+                                verticalArrangement = Arrangement.spacedBy(12.dp)) {
                                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                                     Text("SALDO PRINCIPAL", fontSize = 11.sp, letterSpacing = 1.8.sp, color = Color(0xFFDDCEED))
-                                    IconButton(onClick = onRefreshAll, enabled = enabled, modifier = Modifier.size(48.dp)) {
+                                    IconButton(onClick = { onQuery(CubacelQuery.BALANCE) }, enabled = enabled, modifier = Modifier.size(48.dp)) {
                                         Icon(Icons.Outlined.Refresh, "Actualizar solo el saldo", tint = Mint, modifier = Modifier.size(22.dp))
                                     }
                                 }
-                                Row(verticalAlignment = Alignment.Bottom) {
-                                    Text(balance?.balanceCup() ?: "—", color = Color.White, fontSize = 46.sp, lineHeight = 52.sp, fontWeight = FontWeight.SemiBold)
-                                    Text(" CUP", color = Color(0xFFDDCEED), fontSize = 16.sp, modifier = Modifier.padding(bottom = 7.dp))
+                                FlowRow(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Text(balance?.balanceCup() ?: "—", color = Color.White, fontSize = if ((balance?.balanceCup()?.length ?: 0) > 8) 34.sp else 46.sp, lineHeight = 52.sp, fontWeight = FontWeight.SemiBold)
+                                    Text(" CUP", color = Color(0xFFDDCEED), fontSize = 16.sp, modifier = Modifier.align(Alignment.Bottom).padding(bottom = 7.dp))
                                 }
-                                Text(balance?.let { "${freshnessLabel(it.receivedAt(), now)} · ${stamp(it.receivedAt())}" } ?: "Consulta tu línea para ver el saldo real.", color = Color(0xFFDDCEED), fontSize = 12.sp)
+                                Text(balance?.let { "${freshnessLabel(it.receivedAt(), now)} · ${stamp(it.receivedAt())}" } ?: when {
+                                    !state.permission -> "Conecta tu SIM para consultar el saldo."
+                                    selectedLine?.active == false -> "Línea guardada. Activa esta SIM para consultar."
+                                    selectedLine != null && !selectedLine.cubacel -> "Las consultas están disponibles para SIM Cubacel."
+                                    selectedLine == null -> "Añade o activa una SIM Cubacel para consultar."
+                                    else -> "Consulta tu línea para ver el saldo real."
+                                }, color = Color(0xFFDDCEED), fontSize = 12.sp)
                                 balance?.expiresAt()?.let { Text(expirationLabel(it, now), color = Color(0xFFDDCEED), fontSize = 12.sp) }
-                                Button(onClick = { onQuery(CubacelQuery.BALANCE) }, enabled = enabled,
+                                Button(onClick = onRefreshAll, enabled = enabled,
                                     colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Navy,
                                         disabledContainerColor = Color(0xFF705782), disabledContentColor = Color(0xFFD9CBE4)),
                                     shape = RoundedCornerShape(14.dp), contentPadding = PaddingValues(14.dp), modifier = Modifier.fillMaxWidth()) {
-                                    if (state.isQuerying(CubacelQuery.BALANCE)) CircularProgressIndicator(Modifier.size(19.dp), color = Mint, strokeWidth = 2.dp)
+                                    if (state.busy) CircularProgressIndicator(Modifier.size(19.dp), color = Color(0xFFD9CBE4), strokeWidth = 2.dp)
                                     else Icon(Icons.Outlined.Refresh, null, modifier = Modifier.size(19.dp))
                                     Spacer(Modifier.width(8.dp))
                                     Text(if (state.busy) "Actualizando…" else "Actualizar todo", fontWeight = FontWeight.Bold)
@@ -212,7 +241,17 @@ private val Navy = Color(0xFF35234F)
                                 }
                             }
                         }
-                        item { SectionTitle("Tus recursos", "Toca para actualizar") }
+                        item {
+                            AttentionCard(DashboardInsights.notices(state.entries, state.selected, now), enabled, now,
+                                onQuery, onRefreshAll, { recharge = true }, { buyPlans = true })
+                        }
+                        item {
+                            FlowRow(maxItemsInEachRow = if (stacked) 1 else 2, horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                ActionTile("Recargar", "Añade saldo", Icons.Outlined.AddCard, Color(0xFFEDE8FA), Modifier.weight(1f)) { recharge = true }
+                                ActionTile("Comprar planes", "Menú de Cubacel", Icons.Outlined.ShoppingBag, Color(0xFFECE6F4), Modifier.weight(1f)) { buyPlans = true }
+                            }
+                        }
+                        item { SectionTitle("Tus recursos", "Toca una tarjeta para consultar ese recurso.") }
                         item {
                             FlowRow(maxItemsInEachRow = if (stacked) 1 else 2, horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                                 val general = data?.bundles()?.firstOrNull { it.kind() == "general" }
@@ -231,10 +270,8 @@ private val Navy = Color(0xFF35234F)
                             }
                         }
                         item {
-                            FlowRow(maxItemsInEachRow = if (stacked) 1 else 2, horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                                ActionTile("Recargar", "Añade saldo", Icons.Outlined.AddCard, Color(0xFFEDE8FA), Modifier.weight(1f)) { recharge = true }
-                                ActionTile("Planes", "Datos y llamadas", Icons.Outlined.ShoppingBag, Color(0xFFECE6F4), Modifier.weight(1f)) { confirmDial = "*133#" }
-                            }
+                            UsageTrendsCard(DashboardInsights.trends(state.entries, state.selected, now),
+                                enabled, onRefreshAll, { page = 1 })
                         }
                         item {
                             RechargeAvailability(entries.firstOrNull { it.reading.query() == CubacelQuery.RECHARGE_STATUS }?.reading, enabled, now, state.isQuerying(CubacelQuery.RECHARGE_STATUS)) {
@@ -301,13 +338,21 @@ private val Navy = Color(0xFF35234F)
                                 Text("${minOf(historyLimit, filtered.size)} de ${filtered.size} lecturas · hasta 300 guardadas entre todas las líneas", fontSize = 12.sp, color = Muted)
                             }
                         }
-                        if (entries.isNotEmpty() && filtered.isEmpty()) item { Text("No hay lecturas con estos filtros.", color = Muted) }
+                        if (entries.isNotEmpty() && filtered.isEmpty()) item {
+                            WhiteCard {
+                                Icon(Icons.Outlined.SearchOff, null, tint = Teal, modifier = Modifier.size(32.dp))
+                                Text("No hay resultados", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                                Text("Prueba otra categoría o amplía el período.", color = Muted)
+                                TextButton(onClick = { historyCategory = null; historyDays = 0 }) { Text("Mostrar todas las lecturas") }
+                            }
+                        }
                         if (state.loading) item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
                         if (entries.isEmpty()) item {
                             WhiteCard {
                                 Icon(Icons.Outlined.History, null, tint = Teal, modifier = Modifier.size(32.dp))
                                 Text("Tu primera lectura empieza aquí", fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                                Text("Al consultar, extraemos y guardamos los datos automáticamente. No tienes que rellenar formularios.", color = Muted, fontSize = 13.sp)
+                                Text("Al consultar tu línea, las lecturas se guardan aquí automáticamente.", color = Muted, fontSize = 14.sp)
+                                Button(onClick = { page = 0 }) { Text("Ir a mi línea") }
                             }
                         }
                         items(filtered.take(historyLimit)) { entry ->
@@ -325,18 +370,6 @@ private val Navy = Color(0xFF35234F)
                             OutlinedButton(onClick = { historyLimit += 25 }, modifier = Modifier.fillMaxWidth()) { Text("Cargar más") }
                         }
                     } else {
-                        item {
-                            WhiteCard {
-                                Text("Actualizar SIMple", fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                                Text("Versión ${com.simple.mobile.BuildConfig.VERSION_NAME} (${com.simple.mobile.BuildConfig.VERSION_CODE})", color = Muted)
-                                Text("Consulta GitHub y descarga el APK usando Internet. Android te pedirá confirmar la instalación.", fontSize = 13.sp)
-                                Text(update.message, fontSize = 13.sp)
-                                if (update.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
-                                OutlinedButton(onClick = { updates.check() }, enabled = !update.busy) { Text("Buscar actualización") }
-                                if (update.release != null && !update.ready) Button(onClick = { updates.download() }, enabled = !update.busy) { Text("Descargar actualización") }
-                                if (update.ready) Button(onClick = onInstallUpdate, enabled = !update.busy) { Text("Instalar actualización") }
-                            }
-                        }
                         item {
                             WhiteCard {
                                 Text("Conexión y permisos", fontWeight = FontWeight.Bold, fontSize = 18.sp)
@@ -371,6 +404,18 @@ private val Navy = Color(0xFF35234F)
                             }
                         }
                         item {
+                            WhiteCard {
+                                Text("Actualizar SIMple", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                                Text("Versión ${com.simple.mobile.BuildConfig.VERSION_NAME} (${com.simple.mobile.BuildConfig.VERSION_CODE})", color = Muted)
+                                Text("Consulta GitHub y descarga el APK usando Internet. Android te pedirá confirmar la instalación.", fontSize = 13.sp)
+                                Text(update.message, fontSize = 13.sp)
+                                if (update.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+                                OutlinedButton(onClick = { updates.check() }, enabled = !update.busy) { Text("Buscar actualización") }
+                                if (update.release != null && !update.ready) Button(onClick = { updates.download() }, enabled = !update.busy) { Text("Descargar actualización") }
+                                if (update.ready) Button(onClick = onInstallUpdate, enabled = !update.busy) { Text("Instalar actualización") }
+                            }
+                        }
+                        item {
                             Text("SIMple ${com.simple.mobile.BuildConfig.VERSION_NAME}", fontSize = 12.sp, color = Muted)
                             Text("Las consultas necesitan una SIM Cubacel y cobertura. Los SMS del operador se importan solo si autorizas los permisos. Los anuncios y mensajes personales no se guardan.", fontSize = 12.sp, color = Muted)
                         }
@@ -378,6 +423,19 @@ private val Navy = Color(0xFF35234F)
                 }
             }
         }
+        if (buyPlans) AlertDialog(onDismissRequest = { buyPlans = false },
+            title = { Text("Comprar un plan") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("Abre el menú de Cubacel para elegir un plan de datos, minutos o mensajes y consultar su precio actual.")
+                    state.displayLines.firstOrNull { it.subscription == state.selected }?.let {
+                        Text("Línea seleccionada: ${it.label}", fontWeight = FontWeight.SemiBold)
+                    }
+                    Text("En Teléfono, selecciona tu SIM Cubacel y confirma allí la compra. Al volver, pulsa Actualizar todo para consultar tus recursos.", color = Muted)
+                }
+            },
+            confirmButton = { TextButton(onClick = { buyPlans = false; onDial("*133#") }) { Text("Abrir menú de planes") } },
+            dismissButton = { TextButton(onClick = { buyPlans = false }) { Text("Cancelar") } })
         if (recharge) AlertDialog(onDismissRequest = { recharge = false }, title = { Text("Recarga tu línea") },
             text = { Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text("Elige cómo continuar. Confirma la SIM y cualquier pago en la aplicación que se abra.", fontSize = 13.sp)
@@ -445,31 +503,42 @@ private fun rechargeDate(at: Long) = SimpleDateFormat("d 'de' MMMM 'de' yyyy", L
     .apply { timeZone = java.util.TimeZone.getTimeZone("America/Havana") }.format(Date(at))
 
 @Composable private fun WhiteCard(content: @Composable ColumnScope.() -> Unit) {
-    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(MaterialTheme.colorScheme.surface).padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp), content = content)
+    Surface(shape = RoundedCornerShape(24.dp), color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)) {
+        Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp), content = content)
+    }
 }
 @Composable private fun SectionTitle(title: String, detail: String) {
-    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(title, fontSize = 17.sp, fontWeight = FontWeight.Bold, color = Ink)
-        Text(detail, fontSize = 12.sp, color = Muted)
+    Column(Modifier.fillMaxWidth().padding(top = 4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(title, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Ink, modifier = Modifier.semantics { heading() })
+        Text(detail, fontSize = 13.sp, lineHeight = 19.sp, color = Muted)
     }
 }
 @Composable private fun ActionTile(title: String, detail: String, icon: ImageVector, color: Color, modifier: Modifier, action: () -> Unit) {
-    Surface(onClick = action, color = MaterialTheme.colorScheme.secondaryContainer, shape = RoundedCornerShape(18.dp), modifier = modifier) {
-        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(icon, null, tint = Ink, modifier = Modifier.size(23.dp)); Spacer(Modifier.width(10.dp))
-            Column { Text(title, fontSize = 14.sp, fontWeight = FontWeight.Bold); Text(detail, fontSize = 12.sp, color = Muted) }
+    Surface(onClick = action, color = if (isSystemInDarkTheme()) MaterialTheme.colorScheme.secondaryContainer else color,
+        shape = RoundedCornerShape(20.dp), modifier = modifier) {
+        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Icon(icon, null, tint = Teal, modifier = Modifier.size(24.dp))
+                Icon(Icons.Outlined.ArrowOutward, null, tint = Muted, modifier = Modifier.size(18.dp))
+            }
+            Text(title, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+            Text(detail, fontSize = 13.sp, color = Muted)
         }
     }
 }
 @Composable private fun ResourceCard(title: String, value: String, unit: String, icon: ImageVector, tint: Color, modifier: Modifier, enabled: Boolean, reading: CarrierReading?, now: Long, querying: Boolean, expiry: Long? = reading?.expiresAt(), action: () -> Unit) {
-    Surface(onClick = action, enabled = enabled, shape = RoundedCornerShape(21.dp), color = MaterialTheme.colorScheme.surface, modifier = modifier) {
-        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+    Surface(onClick = action, enabled = enabled, shape = RoundedCornerShape(21.dp), color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant), modifier = modifier) {
+        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Icon(icon, null, tint = Teal, modifier = Modifier.size(18.dp))
+                Box(Modifier.size(32.dp).background(if (isSystemInDarkTheme()) MaterialTheme.colorScheme.secondaryContainer else tint, RoundedCornerShape(10.dp)), contentAlignment = Alignment.Center) {
+                    Icon(icon, null, tint = Teal, modifier = Modifier.size(18.dp))
+                }
                 Spacer(Modifier.width(7.dp))
-                Text(title, fontSize = 13.sp, color = Muted, modifier = Modifier.weight(1f))
+                Text(title, fontSize = 14.sp, fontWeight = FontWeight.Medium, color = Ink, modifier = Modifier.weight(1f))
                 if (querying) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
-                else Icon(Icons.Outlined.Refresh, "Consultar $title", tint = Muted, modifier = Modifier.size(16.dp))
+                else Icon(Icons.Outlined.Refresh, null, tint = Muted, modifier = Modifier.size(16.dp))
             }
             Text(value, fontSize = if (value.length > 8) 22.sp else 30.sp, lineHeight = 34.sp, fontWeight = FontWeight.SemiBold, color = Ink)
             Text(unit, fontSize = 12.sp, color = Muted)
@@ -481,15 +550,15 @@ private fun rechargeDate(at: Long) = SimpleDateFormat("d 'de' MMMM 'de' yyyy", L
     }
 }
 @Composable private fun SettingsRow(label: String, icon: ImageVector, action: () -> Unit) {
-    Row(Modifier.fillMaxWidth().clickable(onClick = action).padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).clip(RoundedCornerShape(12.dp)).clickable(onClick = action).padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
         Icon(icon, null, tint = Teal, modifier = Modifier.size(21.dp)); Spacer(Modifier.width(12.dp))
-        Text(label, modifier = Modifier.weight(1f), fontSize = 13.sp); Icon(Icons.Outlined.ChevronRight, null, tint = Muted)
+        Text(label, modifier = Modifier.weight(1f), fontSize = 15.sp); Icon(Icons.Outlined.ChevronRight, null, tint = Muted)
     }
 }
 @Composable private fun PrivacyFooter() {
     Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
         Icon(Icons.Outlined.Lock, null, tint = Muted, modifier = Modifier.size(13.dp)); Spacer(Modifier.width(6.dp))
-        Text("Guardado automático · Cifrado en tu dispositivo", color = Muted, fontSize = 12.sp)
+        Text("Guardado automático · Cifrado en tu dispositivo", color = Muted, fontSize = 12.sp, modifier = Modifier.weight(1f, fill = false))
     }
 }
 private fun stamp(at: Long) = SimpleDateFormat("d MMM · HH:mm", Locale("es")).format(Date(at))
@@ -547,5 +616,67 @@ private fun expirationLabel(at: Long, now: Long) =
         OutlinedButton(onClick = onSync,
             enabled = status.enabled && state.permission && state.smsReadAllowed && !status.syncing && !state.managingLine,
             modifier = Modifier.fillMaxWidth()) { Text(if (status.syncing) "Sincronizando…" else "Sincronizar ahora") }
+    }
+}
+
+@Composable private fun AttentionCard(notices: List<DashboardInsights.Notice>, enabled: Boolean, now: Long,
+    query: (CubacelQuery) -> Unit, refresh: () -> Unit, recharge: () -> Unit, plans: () -> Unit) {
+    var expanded by remember(notices) { mutableStateOf(false) }
+    if (notices.isEmpty()) return
+    WhiteCard {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Outlined.Info, null, tint = Teal)
+            Spacer(Modifier.width(10.dp))
+            Text("Para tener en cuenta", fontSize = 18.sp, fontWeight = FontWeight.Bold,
+                modifier = Modifier.semantics { heading() })
+        }
+        (if (expanded) notices else notices.take(1)).forEach { notice ->
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(notice.title, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+                Text(notice.detail, fontSize = 13.sp, color = Muted)
+                notice.at?.let { Text(freshnessLabel(it, now), fontSize = 12.sp, color = Muted) }
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = { if (notice.refreshAll) refresh() else query(notice.query) }, enabled = enabled) {
+                        Text(if (notice.refreshAll) "Actualizar todo" else "Consultar")
+                    }
+                    if (!notice.refreshAll) {
+                        TextButton(onClick = if (notice.query == CubacelQuery.BALANCE) recharge else plans) {
+                            Text(if (notice.query == CubacelQuery.BALANCE) "Recargar" else "Comprar planes")
+                        }
+                    }
+                }
+            }
+        }
+        if (notices.size > 1) TextButton(onClick = { expanded = !expanded }) {
+            Text(if (expanded) "Ver menos" else "Ver ${notices.size - 1} avisos más")
+            Icon(if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore, null)
+        }
+    }
+}
+
+@Composable private fun UsageTrendsCard(trends: List<DashboardInsights.Trend>, enabled: Boolean,
+    refresh: () -> Unit, history: () -> Unit) {
+    WhiteCard {
+        SectionTitle("Cómo cambian tus recursos", "Últimas dos lecturas de cada recurso · últimos 7 días")
+        if (trends.isEmpty()) {
+            Text("Necesitas dos lecturas del mismo recurso para compararlo. Consulta hoy y vuelve después de usar tu línea.", color = Muted, fontSize = 14.sp)
+            OutlinedButton(onClick = refresh, enabled = enabled) { Text("Actualizar recursos") }
+        } else {
+            trends.forEachIndexed { index, trend ->
+                if (index > 0) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                val unit = when (trend.query) {
+                    CubacelQuery.BALANCE -> "CUP"; CubacelQuery.DATA -> "GB"; CubacelQuery.VOICE -> "min"; else -> "SMS"
+                }
+                Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                    Text(if (trend.query == CubacelQuery.DATA) "Internet general" else queryLabel(trend.query), fontWeight = FontWeight.SemiBold)
+                    Text("${number(trend.before)} → ${number(trend.after)} $unit", fontSize = 20.sp, color = Teal, fontWeight = FontWeight.Bold)
+                    Text("${stamp(trend.from)} → ${stamp(trend.to)}", fontSize = 12.sp, color = Muted)
+                    Text(trend.explanation ?: if (trend.reduction?.signum() == 0) "Sin cambios entre lecturas"
+                        else "Reducción observada: ${number(trend.reduction!!)} $unit", fontSize = 13.sp, color = Muted)
+                }
+            }
+            Text("Son cambios entre consultas, no una medición continua del consumo. Compras, recargas y vencimientos pueden modificar los valores.", fontSize = 12.sp, color = Muted)
+        }
+        TextButton(onClick = history) { Text("Ver historial completo"); Spacer(Modifier.width(6.dp)); Icon(Icons.Outlined.ArrowForward, null, modifier = Modifier.size(18.dp)) }
     }
 }

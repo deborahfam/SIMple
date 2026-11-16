@@ -13,6 +13,13 @@ Kotlin + Jetpack Compose presentation, MVVM, native subscription-aware USSD and 
 - Dashboard and history survive app restarts. No manual balance-entry forms.
 - Resource cards show reading age and timestamps; known expired quotas are explicitly marked.
 - Each resource shows its own loading state, scoped to the SIM being queried.
+- Dashboard notices highlight low resources, known expiries within 24 hours, expired allowances,
+  and missing/stale readings for the selected SIM. Low-resource claims require readings newer than 24 hours.
+- Resource trends compare the last two measured readings per category within seven days. They show
+  observed changes, not continuous consumption or forecasts. Known purchases/recharges, increases,
+  and expiry changes suppress reduction estimates; unlimited data is not compared to finite quotas.
+- Prominent **Recargar** and **Comprar planes** actions open user-confirmed carrier flows. Plan
+  purchases use the existing `*133#` dialer menu; prices and purchases are confirmed with Cubacel.
 - Optional local reminders cover known expiry dates, recharge reopening and low resources.
 - **Actualizar todo** queries balance, data, minutes, SMS, bonuses and recharge status sequentially
   on the selected SIM, with category progress. **Detener** skips pending queries while allowing
