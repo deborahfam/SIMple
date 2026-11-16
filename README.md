@@ -329,3 +329,24 @@ The dialog blocks screenshots, never saves typed PIN input across recreation, an
 **Olvidar PIN ficticio**. Devices without a secure screen lock can still type the demo PIN.
 No new SMS permission or banking receiver is added. The former external Transfermóvil launcher
 is replaced by this simulator; the separate recharge-card and official ETECSA links remain.
+
+## Bank recharge responses (0.6.3)
+
+**Recargar → Leer avisos de PAGOxMOVIL** explicitly opts into a separate sender in the existing
+permission-controlled SMS connection. Inbox review and incoming multipart SMS both recognize the
+observed 30-day-quota rejection, including international `53` prefixes, and show the destination,
+quota and exact “after” date inside Recargar. The quota is never treated as a debit or requested
+amount; a processing acknowledgement is not a successful payment. Unknown formats are ignored.
+
+Consent changes invalidate queued imports and reset the sender-scoped checkpoint. Late replies
+are imported without a five-minute cutoff. Up to 30 parsed notices are AES-GCM encrypted separately
+with Android Keystore; raw SMS bodies and PINs are not retained. Broadcast/inbox duplicates use a
+canonical fingerprint. The latest notice is shown for the **receiving** SIM (expand to see up to three), with the destination
+explicitly displayed: receiving a rejection does not establish that its destination is that SIM.
+Deleting a line removes its received notices; clearing all local data removes all notices. Opting
+out stops further imports and preserves previously saved notices.
+
+This connects real **response reading**, not real bank authentication or recharge submission.
+There is no verified live submission adapter yet. SIMple does not send, retry, settle or automatically
+attribute a bank transaction from these SMS; sender text alone is not cryptographic authentication.
+The existing offline recharge simulator remains clearly separate.

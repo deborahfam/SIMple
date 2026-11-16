@@ -509,8 +509,11 @@ private val Navy = Color(0xFF35234F)
         com.simple.mobile.presentation.recharge.RechargeDemoDialog(demo, onDemoPin)
         if (recharge) AlertDialog(onDismissRequest = { recharge = false }, title = { Text("Recarga tu línea") },
             text = { Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("Prueba la recarga dentro de SIMple sin mover dinero. Las otras opciones abren servicios externos.", fontSize = 13.sp)
                 Text(state.displayLines.firstOrNull { it.subscription == state.selected }?.label ?: "Selecciona la línea que deseas recargar", fontWeight = FontWeight.Bold)
+                com.simple.mobile.presentation.recharge.BankRechargeNotices(state,
+                    onEnabled = { enabled -> model.setBankSms(enabled); if (enabled) onSmsEnabled(true) },
+                    onSync = onRescanSms)
+                HorizontalDivider()
                 Text("El simulador usa un número ficticio, un importe en CUP y el PIN de prueba 1234. No conecta con Transfermóvil ni con tu banco.", fontSize = 13.sp)
                 Button(onClick = { recharge = false; onRechargeDemo() }, modifier = Modifier.fillMaxWidth(), enabled = !state.busy) { Text("Probar recarga dentro de SIMple") }
                 OutlinedButton(onClick = { recharge = false; confirmDial = "*666" }, modifier = Modifier.fillMaxWidth()) { Text("Usar tarjeta de recarga") }
@@ -528,7 +531,7 @@ private val Navy = Color(0xFF35234F)
                 dismissButton = { TextButton(onClick = { rename = null }) { Text("Cancelar") } })
         }
         if (delete) AlertDialog(onDismissRequest = { delete = false }, title = { Text("¿Eliminar datos de $deleteLabel?") },
-            text = { Text("Se borrarán las lecturas, nombres y registros de transferencia de ${if (deleteSubscription == null) "todas las líneas" else "esta línea"}. ${if (deleteSubscription == null) "También se borrarán todos los destinatarios guardados. " else "Los destinatarios guardados se conservarán. "}Se desactivará la importación SMS. No se puede deshacer.") },
+            text = { Text("Se borrarán las lecturas, nombres, avisos de recarga y registros de transferencia de ${if (deleteSubscription == null) "todas las líneas" else "esta línea"}. ${if (deleteSubscription == null) "También se borrarán todos los destinatarios guardados. " else "Los destinatarios guardados se conservarán. "}Se desactivará la importación SMS. No se puede deshacer.") },
             confirmButton = { TextButton(onClick = { delete = false; model.clearHistory(deleteSubscription) }, enabled = !state.busy && !state.managingLine && !state.transferSaving) { Text("Eliminar") } },
             dismissButton = { TextButton(onClick = { delete = false }) { Text("Cancelar") } })
     }
@@ -684,7 +687,7 @@ private fun expirationLabel(at: Long, now: Long) =
         Text("Solo mensajes reconocidos del operador, de todas tus SIM Cubacel activas.", color = Muted, fontSize = 12.sp)
         status.lastAt?.let {
             Text("Última sincronización · ${stamp(it)}", fontSize = 12.sp)
-            Text("${status.lastAdded} lecturas nuevas añadidas. Los duplicados no se cuentan.", color = Muted, fontSize = 12.sp)
+            Text("${status.lastAdded} registros nuevos añadidos. Los duplicados no se cuentan.", color = Muted, fontSize = 12.sp)
         } ?: Text("Todavía no se ha completado una sincronización.", color = Muted, fontSize = 12.sp)
         status.error?.let { Text(it, fontSize = 12.sp, color = MaterialTheme.colorScheme.error) }
         if (status.syncing) LinearProgressIndicator(Modifier.fillMaxWidth())
@@ -693,7 +696,7 @@ private fun expirationLabel(at: Long, now: Long) =
             TextButton(onClick = onPermissions) { Text("Revisar permisos en Android") }
         }
         if (status.moreInbox) Text("Quedan mensajes nuevos por revisar. Sincroniza de nuevo para continuar.", fontSize = 13.sp)
-        Text("La primera revisión incluye hasta 150 mensajes del operador; después se revisan solo los nuevos.", color = Muted, fontSize = 12.sp)
+        Text("La primera revisión incluye hasta 150 SMS del operador y, si lo activas en Recargar, de PAGOxMOVIL. Después se revisan solo los nuevos.", color = Muted, fontSize = 12.sp)
         TextButton(onClick = onRescan, enabled = status.enabled && permissionsReady && !status.syncing && !state.managingLine) { Text("Revisar últimos 150 mensajes") }
         OutlinedButton(onClick = onSync,
             enabled = status.enabled && state.permission && state.smsReadAllowed && !status.syncing && !state.managingLine,

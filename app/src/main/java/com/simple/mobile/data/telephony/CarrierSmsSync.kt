@@ -19,7 +19,14 @@ object CarrierSmsSync {
         context.getSystemService(TelephonyManager::class.java)?.createForSubscriptionId(id)?.simOperator == "36801"
     fun ingest(app: SimpleApplication, sender: String?, body: String, subscription: Int, at: Long, event: String, token: Long): Int {
         if (!app.smsImport.isCurrent(token)) return 0
-        if (sender?.lowercase(java.util.Locale.ROOT) !in senders || subscription < 0 || !cubacel(app, subscription)) return 0
+        if (subscription < 0 || !cubacel(app, subscription)) return 0
+        if (sender.equals("PAGOxMOVIL", ignoreCase = true)) {
+            if (!app.smsImport.state.value.bankEnabled) return 0
+            val added = app.smsImport.saveIfEnabled(token) { app.bankNoticeStore.ingest(sender, body, subscription, at) }
+            if (added) app.refreshBankNotices()
+            return if (added) 1 else 0
+        }
+        if (sender?.lowercase(java.util.Locale.ROOT) !in senders) return 0
         val parsed = try { CubacelParser().parseSms(body, at) } catch (_: CubacelParser.ParseException) { return 0 }
         return parsed.count { reading -> app.smsImport.saveIfEnabled(token) {
             app.store.save(subscription, reading, "$event:${reading.query()}")
@@ -34,15 +41,16 @@ object CarrierSmsSync {
         val valid = SimRepository(app).activeSubscriptions().filter { cubacel(app, it.subscriptionId) }.map { it.subscriptionId }.toSet()
         if (valid.isEmpty()) return 0
         var count = 0
-        val scope = java.security.MessageDigest.getInstance("SHA-256").digest(valid.sorted().joinToString(",").toByteArray())
+        val includedSenders = senders.toList() + if (app.smsImport.state.value.bankEnabled) listOf("pagoxmovil") else emptyList()
+        val scope = java.security.MessageDigest.getInstance("SHA-256").digest((valid.sorted().joinToString(",") + "|" + includedSenders.joinToString(",")).toByteArray())
             .joinToString("") { "%02x".format(it) }
         val previous = if (rescan) null else app.smsImport.inboxCursor(scope)
         var highest = previous ?: -1L
         var more = false
         // Selection is applied by the provider, before bodies are read into the app process.
         app.contentResolver.query(Telephony.Sms.Inbox.CONTENT_URI, arrayOf("_id", "address", "body", "date", "sub_id", "date_sent"),
-            "LOWER(address) IN (?,?,?,?)" + if (previous != null) " AND _id > ?" else "",
-            (senders.toList() + listOfNotNull(previous?.toString())).toTypedArray(),
+            "LOWER(address) IN (${includedSenders.joinToString(",") { "?" }})" + if (previous != null) " AND _id > ?" else "",
+            (includedSenders + listOfNotNull(previous?.toString())).toTypedArray(),
             if (previous == null) "_id DESC" else "_id ASC").let { cursor ->
             checkNotNull(cursor) { "SMS provider unavailable" }
             cursor.use {

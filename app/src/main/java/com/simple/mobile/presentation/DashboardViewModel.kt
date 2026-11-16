@@ -35,6 +35,8 @@ data class Line(val subscription: Int, val slot: Int, val carrier: String, val c
 data class DashboardState(
     val lines: List<Line> = emptyList(), val selected: Int = -1,
     val entries: List<EncryptedReadingStore.Entry> = emptyList(),
+    val bankNotices: List<com.simple.mobile.data.recharge.BankRechargeNotice> = emptyList(),
+    val bankNoticeError: Boolean = false,
     val unreadableCount: Int = 0, val loading: Boolean = true, val busy: Boolean = false,
     val message: String? = null, val permission: Boolean = false,
     val storageReady: Boolean = false,
@@ -50,7 +52,7 @@ data class DashboardState(
     val mobileUsage: com.simple.mobile.data.statistics.MobileUsageState = com.simple.mobile.data.statistics.MobileUsageState(),
     val remindersEnabled: Boolean = false, val notificationsAllowed: Boolean = false
  ) {
-    val displayLines: List<Line> get() = LineCatalog.visible(lines, (entries.map { it.subscription } + transfers.map { it.subscription }).toSet(), nicknames)
+    val displayLines: List<Line> get() = LineCatalog.visible(lines, (entries.map { it.subscription } + transfers.map { it.subscription } + bankNotices.map { it.receivingSubscription }).toSet(), nicknames)
     fun isQuerying(query: CubacelQuery): Boolean = busy && querySubscription == selected && activeQuery == query
 }
 
@@ -66,6 +68,8 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
     init {
         loadHistory()
         loadTransfers()
+        viewModelScope.launch { app.bankNotices.collect { notices -> mutable.update { old -> old.copy(bankNotices = notices).let { it.copy(selected = LineCatalog.selection(old.selected, it.displayLines)) } } } }
+        viewModelScope.launch { app.bankNoticeError.collect { failed -> mutable.update { it.copy(bankNoticeError = failed) } } }
         viewModelScope.launch { app.smsImport.state.collect { status -> mutable.update { it.copy(smsStatus = status) } } }
         viewModelScope.launch { app.readings.collect { values -> mutable.update { old -> old.copy(entries = values, unreadableCount = store.unreadableCount).let { it.copy(selected = LineCatalog.selection(old.selected, it.displayLines)) } } } }
     }
@@ -135,7 +139,7 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
             }
         } catch (_: RuntimeException) { emptyList() }
         mutable.update { old -> old.copy(lines = lines, permission = permitted,
-            selected = LineCatalog.selection(old.selected, LineCatalog.visible(lines, (old.entries.map { it.subscription } + old.transfers.map { it.subscription }).toSet(), old.nicknames))) }
+            selected = LineCatalog.selection(old.selected, LineCatalog.visible(lines, (old.entries.map { it.subscription } + old.transfers.map { it.subscription } + old.bankNotices.map { it.receivingSubscription }).toSet(), old.nicknames))) }
     }
     fun loadMobileUsage(days: Int = mutable.value.mobileUsage.days) {
         if (days !in listOf(7, 30) || mutable.value.mobileUsage.loading) return
@@ -183,6 +187,7 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
             smsReadAllowed = app.checkSelfPermission(Manifest.permission.READ_SMS) == PackageManager.PERMISSION_GRANTED,
             smsReceiveAllowed = app.checkSelfPermission(Manifest.permission.RECEIVE_SMS) == PackageManager.PERMISSION_GRANTED) }
     }
+    fun setBankSms(enabled: Boolean) { app.smsImport.setBankEnabled(enabled) }
     fun enableSms() {
         refreshSmsPermissions()
         if (!mutable.value.permission || !mutable.value.smsReadAllowed || !mutable.value.smsReceiveAllowed) {
@@ -201,7 +206,7 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
             try {
                 count = com.simple.mobile.data.telephony.CarrierSmsSync.syncInbox(app, token, rescan)
                 if (count > 0) app.refreshReadings()
-                if (!disposed && showMessage && app.smsImport.isCurrent(token)) notify("$count lecturas nuevas añadidas." + if (app.smsImport.state.value.moreInbox) " Quedan mensajes nuevos: pulsa Sincronizar ahora para continuar." else " Revisión terminada.")
+                if (!disposed && showMessage && app.smsImport.isCurrent(token)) notify("$count registros nuevos añadidos." + if (app.smsImport.state.value.moreInbox) " Quedan mensajes nuevos: pulsa Sincronizar ahora para continuar." else " Revisión terminada.")
             } catch (_: SecurityException) { error = "Faltan permisos para sincronizar los SMS. Revisa los permisos en Android." }
             catch (_: Exception) { error = "No se pudo completar la sincronización. Las lecturas guardadas se conservan." }
             finally {
@@ -310,6 +315,8 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
         app.smsImport.setEnabled(false)
         worker.execute {
             try {
+                app.bankNoticeStore.clear(subscription)
+                app.refreshBankNotices()
                 store.clear(subscription)
                 val recipients = store.recipients(); val transfers = store.transfers()
                 mutable.update { it.copy(recipients = recipients, transfers = transfers) }

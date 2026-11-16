@@ -79,4 +79,27 @@ class SmsImportSettingsTest {
         settings.received(token, 5)
         assertEquals(0, settings.state.value.lastAdded)
     }
+    @Test fun bankConsentIsSeparateAndInvalidatesQueuedImports() {
+        val settings = settings()
+        assertFalse(settings.state.value.bankEnabled)
+        settings.setEnabled(true)
+        val before = settings.beginSync()!!
+        settings.checkpoint(before, "old-senders", 100, false)
+        settings.setBankEnabled(true)
+        assertFalse(settings.isCurrent(before))
+        assertNull(settings.inboxCursor("old-senders"))
+        var wrote = false
+        assertFalse(settings.saveIfEnabled(before) { wrote = true; true })
+        assertFalse(wrote)
+        settings.finishSync(before, 4)
+        assertNull(settings.state.value.lastAt)
+        val fresh = settings.beginSync()!!
+        assertTrue(settings.state.value.bankEnabled)
+        settings.setBankEnabled(false)
+        assertFalse(settings.isCurrent(fresh))
+        assertTrue(settings.state.value.enabled)
+        val reopened = SmsImportSettings(ApplicationProvider.getApplicationContext(), "test-sms-settings")
+        assertFalse(reopened.state.value.bankEnabled)
+        assertTrue(reopened.state.value.enabled)
+    }
 }

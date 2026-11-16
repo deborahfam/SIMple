@@ -10,13 +10,20 @@ class SimpleApplication : Application() {
     val worker = Executors.newSingleThreadExecutor()
     val store by lazy { EncryptedReadingStore(this) }
     val readings = MutableStateFlow<List<EncryptedReadingStore.Entry>>(emptyList())
+    val bankNoticeStore by lazy { com.simple.mobile.data.recharge.BankRechargeNoticeStore(this) }
+    val bankNotices = MutableStateFlow<List<com.simple.mobile.data.recharge.BankRechargeNotice>>(emptyList())
+    val bankNoticeError = MutableStateFlow(false)
+    fun refreshBankNotices() {
+        try { bankNotices.value = bankNoticeStore.history(); bankNoticeError.value = false }
+        catch (_: Exception) { bankNotices.value = emptyList(); bankNoticeError.value = true }
+    }
     val smsImport by lazy { com.simple.mobile.data.telephony.SmsImportSettings(this) }
     val reminders by lazy { com.simple.mobile.data.reminders.LocalReminders(this) }
     private val ussd by lazy { UssdDispatcher(this, worker) }
     fun dispatcher() = ussd
     override fun onCreate() {
         super.onCreate()
-        worker.execute { reconcileReminders() }
+        worker.execute { reconcileReminders(); refreshBankNotices() }
     }
     fun refreshReadings() { publishReadings(store.history()) }
     fun publishReadings(entries: List<EncryptedReadingStore.Entry>) {

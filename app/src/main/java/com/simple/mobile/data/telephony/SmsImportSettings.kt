@@ -6,12 +6,12 @@ import kotlinx.coroutines.flow.asStateFlow
 
 /** Import consent and status are shared by the UI, inbox sync and receiver. No message content is stored here. */
 data class SmsSyncStatus(val enabled: Boolean = false, val syncing: Boolean = false,
-                         val lastAt: Long? = null, val lastAdded: Int = 0, val moreInbox: Boolean = false, val error: String? = null)
+                         val lastAt: Long? = null, val lastAdded: Int = 0, val moreInbox: Boolean = false, val error: String? = null, val bankEnabled: Boolean = false)
 
 class SmsImportSettings(context: Context, preferenceName: String = "features") {
     private val prefs = context.getSharedPreferences(preferenceName, Context.MODE_PRIVATE)
     private val mutable = MutableStateFlow(SmsSyncStatus(prefs.getBoolean("carrier_sms", false),
-        lastAt = prefs.getLong("sms_last_at", 0).takeIf { it > 0 }, lastAdded = prefs.getInt("sms_last_added", 0)))
+        lastAt = prefs.getLong("sms_last_at", 0).takeIf { it > 0 }, lastAdded = prefs.getInt("sms_last_added", 0), bankEnabled = prefs.getBoolean("bank_sms", false)))
     val state = mutable.asStateFlow()
     private var generation = 0L
     private var activeSync: Long? = null
@@ -20,6 +20,11 @@ class SmsImportSettings(context: Context, preferenceName: String = "features") {
         if (enabled != mutable.value.enabled) generation++
         prefs.edit().putBoolean("carrier_sms", enabled).apply()
         mutable.value = mutable.value.copy(enabled = enabled, error = null)
+    }
+    @Synchronized fun setBankEnabled(enabled: Boolean) {
+        if (enabled != mutable.value.bankEnabled) generation++
+        prefs.edit().putBoolean("bank_sms", enabled).remove("inbox_id").remove("inbox_scope").apply()
+        mutable.value = mutable.value.copy(bankEnabled = enabled, error = null)
     }
     @Synchronized fun token(): Long? = if (mutable.value.enabled) generation else null
     @Synchronized fun isCurrent(token: Long): Boolean = mutable.value.enabled && token == generation
