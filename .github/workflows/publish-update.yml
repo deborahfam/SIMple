@@ -47,8 +47,11 @@ jobs:
       - uses: gradle/actions/setup-gradle@7ca78c16c887dc6c5f36fd6d0cb0f5c23d940e69 # v6
         if: steps.version.outputs.published != 'true'
       - name: Install Android SDK components
+        uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
         if: steps.version.outputs.published != 'true'
-        run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
+        with:
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
+          log-accepted-android-sdk-licenses: false
       - name: Build and verify
         if: steps.version.outputs.published != 'true'
         env:
