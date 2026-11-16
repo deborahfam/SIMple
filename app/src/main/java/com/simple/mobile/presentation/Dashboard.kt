@@ -54,7 +54,8 @@ private val Teal: Color @Composable get() = if (isSystemInDarkTheme()) Color(0xF
 private val Navy = Color(0xFF35234F)
 
 @Composable fun Dashboard(model: DashboardViewModel, updates: com.simple.mobile.data.updates.AppUpdates, onInstallUpdate: () -> Unit, onConnect: () -> Unit,
-    onQuery: (CubacelQuery) -> Unit, onRefreshAll: () -> Unit, onRefreshNeeded: () -> Unit, onRetryQueries: () -> Unit, onTransfermovil: () -> Unit, onRescanSms: () -> Unit, onReminders: (Boolean) -> Unit, onNotificationSettings: () -> Unit, onSmsEnabled: (Boolean) -> Unit, onSyncSms: () -> Unit, onSettings: () -> Unit, onAppSettings: () -> Unit,
+    demo: com.simple.mobile.presentation.recharge.RechargeDemoViewModel, onDemoPin: (Boolean, String) -> Unit,
+    onQuery: (CubacelQuery) -> Unit, onRefreshAll: () -> Unit, onRefreshNeeded: () -> Unit, onRetryQueries: () -> Unit, onRechargeDemo: () -> Unit, onRescanSms: () -> Unit, onReminders: (Boolean) -> Unit, onNotificationSettings: () -> Unit, onSmsEnabled: (Boolean) -> Unit, onSyncSms: () -> Unit, onSettings: () -> Unit, onAppSettings: () -> Unit,
     onDial: (String) -> Unit, onRechargeSite: () -> Unit, onPickContact: () -> Unit,
     onTransfer: (com.simple.mobile.domain.transfer.TransferDraft) -> Boolean) {
     val state by model.state.collectAsStateWithLifecycle()
@@ -505,12 +506,13 @@ private val Navy = Color(0xFF35234F)
             },
             confirmButton = { TextButton(onClick = { buyPlans = false; onDial("*133#") }) { Text("Abrir menú de planes") } },
             dismissButton = { TextButton(onClick = { buyPlans = false }) { Text("Cancelar") } })
+        com.simple.mobile.presentation.recharge.RechargeDemoDialog(demo, onDemoPin)
         if (recharge) AlertDialog(onDismissRequest = { recharge = false }, title = { Text("Recarga tu línea") },
             text = { Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("Elige cómo continuar. Confirma la SIM y cualquier pago en la aplicación que se abra.", fontSize = 13.sp)
+                Text("Prueba la recarga dentro de SIMple sin mover dinero. Las otras opciones abren servicios externos.", fontSize = 13.sp)
                 Text(state.displayLines.firstOrNull { it.subscription == state.selected }?.label ?: "Selecciona la línea que deseas recargar", fontWeight = FontWeight.Bold)
-                Text("En Transfermóvil: elige tu banco (Metropolitano, BPA o BANDEC), autentícate y abre Operaciones → Recarga Saldo Móvil. Introduce y confirma allí el número, importe y cuenta. SIMple no transmite el PIN ni el número de la SIM.", fontSize = 13.sp)
-                Button(onClick = { recharge = false; onTransfermovil() }, modifier = Modifier.fillMaxWidth(), enabled = !state.busy) { Text("Recargar con Transfermóvil") }
+                Text("El simulador usa un número ficticio, un importe en CUP y el PIN de prueba 1234. No conecta con Transfermóvil ni con tu banco.", fontSize = 13.sp)
+                Button(onClick = { recharge = false; onRechargeDemo() }, modifier = Modifier.fillMaxWidth(), enabled = !state.busy) { Text("Probar recarga dentro de SIMple") }
                 OutlinedButton(onClick = { recharge = false; confirmDial = "*666" }, modifier = Modifier.fillMaxWidth()) { Text("Usar tarjeta de recarga") }
                 OutlinedButton(onClick = { recharge = false; onRechargeSite() }, modifier = Modifier.fillMaxWidth()) { Text("Vías oficiales de ETECSA") }
             } }, confirmButton = { TextButton(onClick = { recharge = false }) { Text("Cerrar") } })

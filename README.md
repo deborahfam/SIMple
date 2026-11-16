@@ -304,10 +304,28 @@ notification service.
   Full damage classification before saving is only necessary when retention may delete records.
   History reads reuse one Keystore key handle and update recovery flags only when needed.
   SIM/history filters reuse the in-memory readings; empty SMS syncs do not reload all history.
-- **Recargar → Recargar con Transfermóvil** opens the installed official package through its
-  launcher, without private activities or guessed deep links. Instructions cover bank selection,
-  authentication and **Operaciones → Recarga Saldo Móvil**. The user enters the recipient,
-  amount and account in Transfermóvil. SIMple sends no PIN, account, amount or phone number.
-  On return it offers a fresh query for the original SIM; returning does not confirm payment.
-  If Transfermóvil cannot be opened, an explanatory message is shown and ETECSA's official
-  recharge website remains available. PIN storage is not included.
+
+## Offline recharge simulator (0.6.2)
+
+**Recargar → Probar recarga dentro de SIMple** opens an in-app, scrollable dialog tied to the
+selected SIM. Choose a simulated bank, fictitious mobile number and positive CUP amount, review,
+and authenticate with the demo PIN **1234**. Explicit buttons inject synthetic authentication,
+recharge confirmation/rejection, duplicate confirmation and timeout events. Every screen labels
+this as a simulation; the real request count is always zero. No bank account or real PIN is needed.
+
+The simulator has no network, USSD or SMS transport and does not read bank messages. Its
+`SIMPLE-DEMO` fixtures are not Transfermóvil protocol samples. Successful simulation does not
+validate compatibility with a bank. Real recharge integration remains unimplemented.
+
+Matching requires the same attempt, SIM, bank, phone, amount, sender and five-minute time window.
+Authentication can produce at most one simulated send. Missing confirmation remains uncertain,
+without automatic retry; restoring the app never repeats authentication or sends. The last trial
+is encrypted separately with Android Keystore AES-GCM. **Nueva prueba** discards only that trial.
+
+**Guardar PIN ficticio 1234** stores only that fixed dummy value in a separate AES-GCM vault;
+it cannot save arbitrary user/bank PINs. Android device credentials are required to save or use
+it, with an authentication-bound Keystore key (30-second system authorization window).
+The dialog blocks screenshots, never saves typed PIN input across recreation, and offers
+**Olvidar PIN ficticio**. Devices without a secure screen lock can still type the demo PIN.
+No new SMS permission or banking receiver is added. The former external Transfermóvil launcher
+is replaced by this simulator; the separate recharge-card and official ETECSA links remain.
