@@ -1,5 +1,6 @@
 package com.simple.mobile.presentation
 
+import com.simple.mobile.domain.transfer.*
 import android.Manifest
 import android.app.Application
 import android.content.pm.PackageManager
@@ -41,9 +42,12 @@ data class DashboardState(
     val querySubscription: Int = -1, val stopRequested: Boolean = false,
     val smsStatus: SmsSyncStatus = SmsSyncStatus(), val smsReadAllowed: Boolean = false, val smsReceiveAllowed: Boolean = false,
     val nicknames: Map<Int, String> = emptyMap(), val managingLine: Boolean = false,
+    val recipients: List<Recipient> = emptyList(), val transfers: List<TransferRecord> = emptyList(),
+    val transferReady: Boolean = false, val transferSaving: Boolean = false,
+    val pickedContact: Pair<String, String>? = null, val refreshOffer: Int? = null,
     val remindersEnabled: Boolean = false, val notificationsAllowed: Boolean = false
  ) {
-    val displayLines: List<Line> get() = LineCatalog.visible(lines, entries.map { it.subscription }.toSet(), nicknames)
+    val displayLines: List<Line> get() = LineCatalog.visible(lines, (entries.map { it.subscription } + transfers.map { it.subscription }).toSet(), nicknames)
     fun isQuerying(query: CubacelQuery): Boolean = busy && querySubscription == selected && activeQuery == query
 }
 
@@ -58,8 +62,65 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
     @Volatile private var disposed = false
     init {
         loadHistory()
+        loadTransfers()
         viewModelScope.launch { app.smsImport.state.collect { status -> mutable.update { it.copy(smsStatus = status) } } }
         viewModelScope.launch { app.readings.collect { values -> mutable.update { old -> old.copy(entries = values, unreadableCount = store.unreadableCount).let { it.copy(selected = LineCatalog.selection(old.selected, it.displayLines)) } } } }
+    }
+    private fun loadTransfers() {
+        worker.execute {
+            try {
+                val recipients = store.recipients(); val transfers = store.transfers()
+                mutable.update { old -> old.copy(recipients = recipients, transfers = transfers, transferReady = true).let { it.copy(selected = LineCatalog.selection(old.selected, it.displayLines)) } }
+            } catch (_: Exception) {
+                mutable.update { it.copy(transferReady = false) }
+                notify("No se pudieron abrir los destinatarios o transferencias. Reintenta el almacenamiento desde Ajustes.")
+            }
+        }
+    }
+    fun pickedContact(name: String, phone: String) { mutable.update { it.copy(pickedContact = name to phone) } }
+    fun consumeContact() { mutable.update { it.copy(pickedContact = null) } }
+    fun offerRefresh(subscription: Int) { mutable.update { it.copy(refreshOffer = subscription) } }
+    fun dismissRefreshOffer() { mutable.update { it.copy(refreshOffer = null) } }
+    private fun transferMutation(action: () -> Unit) {
+        if (mutable.value.transferSaving || mutable.value.managingLine || !mutable.value.transferReady) return
+        mutable.update { it.copy(transferSaving = true) }
+        worker.execute {
+            try {
+                action()
+                val recipients = store.recipients(); val transfers = store.transfers()
+                mutable.update { it.copy(recipients = recipients, transfers = transfers) }
+            } catch (e: Exception) { notify((e as? IllegalArgumentException)?.message ?: "No se pudieron guardar los cambios. Inténtalo de nuevo.") }
+            finally { mutable.update { it.copy(transferSaving = false) } }
+        }
+    }
+    fun saveRecipient(id: String?, name: String, phone: String, favorite: Boolean) = transferMutation {
+        store.saveRecipient(id, name, phone, favorite)
+        notify("Destinatario guardado.")
+    }
+    fun deleteRecipient(id: String) = transferMutation { store.deleteRecipient(id) }
+    fun transferResult(id: String, confirmed: Boolean) = transferMutation {
+        store.transferStatus(id, if (confirmed) "USER_CONFIRMED" else "NOT_COMPLETED")
+    }
+    fun startTransfer(draft: TransferDraft, launch: (TransferDraft) -> Boolean) {
+        val state = mutable.value
+        if (!state.transferReady || state.transferSaving || state.managingLine || state.busy) return
+        if (state.lines.none { it.subscription == draft.subscription && it.cubacel && it.active }) {
+            notify("Selecciona una SIM Cubacel activa para continuar."); return
+        }
+        mutable.update { it.copy(transferSaving = true) }
+        viewModelScope.launch {
+            try {
+                val id = withContext(worker.asCoroutineDispatcher()) { store.prepareTransfer(draft) }
+                val available = mutable.value.lines.any { it.subscription == draft.subscription && it.cubacel && it.active }
+                val opened = available && launch(draft)
+                val transfers = withContext(worker.asCoroutineDispatcher()) {
+                    store.transferStatus(id, if (opened) "OPENED" else "OPEN_FAILED")
+                    store.transfers()
+                }
+                mutable.update { it.copy(transfers = transfers) }
+            } catch (_: Exception) { notify("No se pudo completar el registro local. Revisa el historial antes de reintentar; abrir el menú no confirma un envío.") }
+            finally { mutable.update { it.copy(transferSaving = false) } }
+        }
     }
     fun refreshLines() {
         val app = getApplication<Application>()
@@ -71,7 +132,7 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
             }
         } catch (_: RuntimeException) { emptyList() }
         mutable.update { old -> old.copy(lines = lines, permission = permitted,
-            selected = LineCatalog.selection(old.selected, LineCatalog.visible(lines, old.entries.map { it.subscription }.toSet(), old.nicknames))) }
+            selected = LineCatalog.selection(old.selected, LineCatalog.visible(lines, (old.entries.map { it.subscription } + old.transfers.map { it.subscription }).toSet(), old.nicknames))) }
     }
     fun select(subscription: Int) { mutable.update { it.copy(selected = subscription) } }
     fun dismissMessage() { mutable.update { it.copy(message = null) } }
@@ -89,7 +150,7 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
             }
         }
     }
-    fun retryStorage() { loadHistory() }
+    fun retryStorage() { loadHistory(); loadTransfers() }
     fun refreshSmsPermissions() {
         mutable.update { it.copy(
             smsReadAllowed = app.checkSelfPermission(Manifest.permission.READ_SMS) == PackageManager.PERMISSION_GRANTED,
@@ -209,12 +270,14 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
     fun clearHistory(subscription: Int? = null) {
-        if (mutable.value.busy || mutable.value.managingLine) { notify("Espera a que termine la consulta antes de borrar datos."); return }
+        if (mutable.value.busy || mutable.value.managingLine || mutable.value.transferSaving) { notify("Espera a que termine la consulta antes de borrar datos."); return }
         mutable.update { it.copy(managingLine = true) }
         app.smsImport.setEnabled(false)
         worker.execute {
             try {
                 store.clear(subscription)
+                val recipients = store.recipients(); val transfers = store.transfers()
+                mutable.update { it.copy(recipients = recipients, transfers = transfers) }
                 app.smsImport.clearSummary()
                 app.refreshReadings()
                 val names = store.nicknames()

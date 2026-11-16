@@ -1,5 +1,6 @@
 package com.simple.mobile.data.local
 
+import com.simple.mobile.domain.transfer.*
 import android.content.ContentValues
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
@@ -18,18 +19,24 @@ import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
 /** SQLite holds only random row IDs, IVs and authenticated encrypted typed payloads. */
-class EncryptedReadingStore(context: Context, name: String = "readings.db") : SQLiteOpenHelper(context, name, null, 3) {
+class EncryptedReadingStore(context: Context, name: String = "readings.db") : SQLiteOpenHelper(context, name, null, 4) {
     @Volatile var unreadableCount: Int = 0
         private set
     data class Entry(val subscription: Int, val reading: CarrierReading)
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL("CREATE TABLE readings (id TEXT PRIMARY KEY NOT NULL, iv BLOB NOT NULL, payload BLOB NOT NULL, damaged INTEGER NOT NULL DEFAULT 0)")
         createProfiles(db)
+        createTransfers(db)
     }
     private fun createProfiles(db: SQLiteDatabase) {
         db.execSQL("CREATE TABLE line_profiles (id TEXT PRIMARY KEY NOT NULL, iv BLOB NOT NULL, payload BLOB NOT NULL)")
     }
+    private fun createTransfers(db: SQLiteDatabase) {
+        for (table in listOf("recipients", "transfers"))
+            db.execSQL("CREATE TABLE $table (id TEXT PRIMARY KEY NOT NULL, iv BLOB NOT NULL, payload BLOB NOT NULL)")
+    }
     override fun onUpgrade(db: SQLiteDatabase, old: Int, new: Int) {
+        if (old < 4) createTransfers(db)
         if (old < 2) createProfiles(db)
         if (old < 3) db.execSQL("ALTER TABLE readings ADD COLUMN damaged INTEGER NOT NULL DEFAULT 0")
     }
@@ -61,6 +68,51 @@ class EncryptedReadingStore(context: Context, name: String = "readings.db") : SQ
         val payload = try { cipher.doFinal(bytes) } finally { bytes.fill(0) }
         val values = ContentValues().apply { put("id", id); put("iv", cipher.iv); put("payload", payload) }
         writableDatabase.insertWithOnConflict("line_profiles", null, values, SQLiteDatabase.CONFLICT_REPLACE).also { check(it != -1L) }
+    }
+    private fun secureRows(table: String): List<Pair<String, JSONObject>> = buildList {
+        readableDatabase.rawQuery("SELECT id,iv,payload FROM $table", null).use { cursor ->
+            while (cursor.moveToNext()) add(cursor.getString(0) to decrypt(cursor.getString(0), cursor.getBlob(1), cursor.getBlob(2)))
+        }
+    }
+    private fun secureWrite(table: String, id: String, json: JSONObject) {
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding").apply { init(Cipher.ENCRYPT_MODE, key()); updateAAD(id.toByteArray()) }
+        val bytes = json.toString().toByteArray(Charsets.UTF_8)
+        val encrypted = try { cipher.doFinal(bytes) } finally { bytes.fill(0) }
+        val values = ContentValues().apply { put("id", id); put("iv", cipher.iv); put("payload", encrypted) }
+        check(writableDatabase.insertWithOnConflict(table, null, values, SQLiteDatabase.CONFLICT_REPLACE) != -1L)
+    }
+    @Synchronized fun recipients(): List<Recipient> = secureRows("recipients").map { (id, j) ->
+        Recipient(id, j.getString("name"), j.getString("phone"), j.getBoolean("favorite"))
+    }.sortedWith(compareByDescending<Recipient> { it.favorite }.thenBy { it.name.lowercase() })
+    @Synchronized fun saveRecipient(id: String?, name: String, phone: String, favorite: Boolean) {
+        val validName = requireNotNull(TransferPolicy.name(name))
+        val validPhone = requireNotNull(TransferPolicy.phone(phone))
+        val saved = recipients()
+        require(id == null || saved.any { it.id == id })
+        require(saved.none { it.phone == validPhone && it.id != id }) { "Ya tienes un destinatario con ese número." }
+        require(id != null || saved.size < 50) { "Puedes guardar hasta 50 destinatarios." }
+        secureWrite("recipients", id ?: UUID.randomUUID().toString(), JSONObject().put("name", validName).put("phone", validPhone).put("favorite", favorite))
+    }
+    @Synchronized fun deleteRecipient(id: String) { writableDatabase.delete("recipients", "id=?", arrayOf(id)) }
+    @Synchronized fun transfers(): List<TransferRecord> = secureRows("transfers").map { (id, j) ->
+        TransferRecord(id, j.getInt("subscription"), j.getString("line"), j.getString("name"), j.getString("phone"), j.getString("amount"), j.getLong("at"), j.getString("status"))
+    }.sortedByDescending { it.at }
+    @Synchronized fun prepareTransfer(draft: TransferDraft): String {
+        require(draft.subscription >= 0)
+        val id = UUID.randomUUID().toString()
+        secureWrite("transfers", id, JSONObject().put("subscription", draft.subscription).put("line", draft.line)
+            .put("name", draft.name.take(40)).put("phone", requireNotNull(TransferPolicy.phone(draft.phone)))
+            .put("amount", requireNotNull(TransferPolicy.amount(draft.amount))).put("at", System.currentTimeMillis()).put("status", "PREPARED"))
+        writableDatabase.execSQL("DELETE FROM transfers WHERE rowid NOT IN (SELECT rowid FROM transfers ORDER BY rowid DESC LIMIT 100)")
+        return id
+    }
+    @Synchronized fun transferStatus(id: String, status: String) {
+        require(status in TransferPolicy.statuses)
+        val json = secureRows("transfers").firstOrNull { it.first == id }?.second ?: return
+        val old = json.getString("status")
+        require((old == "PREPARED" && status in setOf("OPENED", "OPEN_FAILED")) ||
+            (old in setOf("OPENED", "USER_CONFIRMED", "NOT_COMPLETED") && status in setOf("USER_CONFIRMED", "NOT_COMPLETED")))
+        secureWrite("transfers", id, json.put("status", status))
     }
     private fun key(): SecretKey {
         val store = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
@@ -152,8 +204,10 @@ class EncryptedReadingStore(context: Context, name: String = "readings.db") : SQ
             if (subscription == null) {
                 db.delete("readings", null, null)
                 db.delete("line_profiles", null, null)
+                db.delete("recipients", null, null)
+                db.delete("transfers", null, null)
             } else {
-                for (table in listOf("readings", "line_profiles")) {
+                for (table in listOf("readings", "line_profiles", "transfers")) {
                     val ids = mutableListOf<String>()
                     db.rawQuery("SELECT id,iv,payload FROM $table", null).use { cursor ->
                         while (cursor.moveToNext()) {

@@ -68,3 +68,12 @@ Use `America/Havana` for carrier-local dates. Keep line validity, plan expiry, b
 and recharge capacity separate. Optional sender-filtered SMS synchronization is implemented with explicit Android permissions.
 Purchase, transfer and recharge SMS structures observed on the authorized test phone are covered
 by redacted fixtures; promotional SMS never become balances. Native USSD remains a separate transport.
+
+## Transfer menu verification — November 16, 2026
+
+The official [balance page](https://www.etecsa.cu/es/movil/necesitas-saldo) publishes a 5 CUP
+transfer fee and up to three outgoing transfers per day. SIMple opens only `*234#` with
+ACTION_DIAL after a recipient/amount review; it never constructs a PIN-bearing command,
+places a call, or claims carrier confirmation from returning to the app. Amount and recipient
+must be entered and confirmed in the carrier menu. The displayed fee is a published reference,
+not a live quote. Received transfers do not extend the receiving line's validity.

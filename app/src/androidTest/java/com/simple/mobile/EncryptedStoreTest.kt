@@ -89,6 +89,8 @@ class EncryptedStoreTest {
         EncryptedReadingStore(context, name).use { store ->
             store.save(77, CubacelParser().parse(CubacelQuery.BALANCE, "Saldo: 25 CUP", 123L))
             store.writableDatabase.execSQL("DROP TABLE line_profiles")
+            store.writableDatabase.execSQL("DROP TABLE recipients")
+            store.writableDatabase.execSQL("DROP TABLE transfers")
             store.writableDatabase.execSQL("ALTER TABLE readings DROP COLUMN damaged")
             store.writableDatabase.version = 1
         }

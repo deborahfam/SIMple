@@ -52,7 +52,8 @@ private val Navy = Color(0xFF35234F)
 
 @Composable fun Dashboard(model: DashboardViewModel, updates: com.simple.mobile.data.updates.AppUpdates, onInstallUpdate: () -> Unit, onConnect: () -> Unit,
     onQuery: (CubacelQuery) -> Unit, onRefreshAll: () -> Unit, onReminders: (Boolean) -> Unit, onNotificationSettings: () -> Unit, onSmsEnabled: (Boolean) -> Unit, onSyncSms: () -> Unit, onSettings: () -> Unit, onAppSettings: () -> Unit,
-    onDial: (String) -> Unit, onRechargeSite: () -> Unit) {
+    onDial: (String) -> Unit, onRechargeSite: () -> Unit, onPickContact: () -> Unit,
+    onTransfer: (com.simple.mobile.domain.transfer.TransferDraft) -> Boolean) {
     val state by model.state.collectAsStateWithLifecycle()
     val update by updates.state.collectAsStateWithLifecycle()
     val stacked = LocalConfiguration.current.screenWidthDp < 360 || LocalDensity.current.fontScale > 1.2f
@@ -67,9 +68,10 @@ private val Navy = Color(0xFF35234F)
     val homeScroll = rememberLazyListState()
     val historyScroll = rememberLazyListState()
     val settingsScroll = rememberLazyListState()
-    var showPackages by rememberSaveable { mutableStateOf(false) }
+    var showPackages by rememberSaveable(state.selected) { mutableStateOf(false) }
     var recharge by remember { mutableStateOf(false) }
     var buyPlans by remember { mutableStateOf(false) }
+    var transfer by rememberSaveable { mutableStateOf(false) }
     var confirmDial by remember { mutableStateOf<String?>(null) }
     var delete by remember { mutableStateOf(false) }
     var deleteSubscription by remember { mutableStateOf<Int?>(null) }
@@ -171,7 +173,19 @@ private val Navy = Color(0xFF35234F)
                                 if (!line.active) Text("Línea guardada: puedes revisar sus lecturas sin tener la SIM activa. Las consultas están deshabilitadas.", color = Muted, fontSize = 13.sp)
                                 OutlinedButton(onClick = { rename = line; nickname = line.nickname }, enabled = state.storageReady && !state.managingLine) { Text("Cambiar nombre") }
                                 TextButton(onClick = { deleteSubscription = line.subscription; deleteLabel = line.label; delete = true },
-                                    enabled = state.storageReady && !state.busy && !state.managingLine) { Text("Eliminar datos de esta línea") }
+                                    enabled = state.storageReady && !state.busy && !state.managingLine && !state.transferSaving) { Text("Eliminar datos de esta línea") }
+                            }
+                        }
+                    }
+                    state.refreshOffer?.let { subscription ->
+                        item {
+                            WhiteCard {
+                                Text("¿Actualizamos tus recursos?", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                                Text("Volviste del servicio externo. Consultar el saldo no confirma por sí solo una compra o transferencia.", color = Muted)
+                                Text(state.displayLines.firstOrNull { it.subscription == subscription }?.label ?: "La línea ya no está disponible.")
+                                Button(onClick = { model.select(subscription); model.dismissRefreshOffer(); onRefreshAll() },
+                                    enabled = state.storageReady && !state.busy && !state.managingLine && state.lines.any { it.subscription == subscription && it.cubacel }) { Text("Actualizar esta línea") }
+                                TextButton(onClick = { model.dismissRefreshOffer() }) { Text("Ahora no") }
                             }
                         }
                     }
@@ -196,7 +210,10 @@ private val Navy = Color(0xFF35234F)
                                 .background(Brush.linearGradient(listOf(Navy, Color(0xFF65468D)))).padding(24.dp),
                                 verticalArrangement = Arrangement.spacedBy(12.dp)) {
                                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                    Text("SALDO PRINCIPAL", fontSize = 11.sp, letterSpacing = 1.8.sp, color = Color(0xFFDDCEED))
+                                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        selectedLine?.let { Text(it.label, color = Mint, fontSize = 14.sp, fontWeight = FontWeight.SemiBold) }
+                                        Text("SALDO PRINCIPAL", fontSize = 11.sp, letterSpacing = 1.8.sp, color = Color(0xFFDDCEED))
+                                    }
                                     IconButton(onClick = { onQuery(CubacelQuery.BALANCE) }, enabled = enabled, modifier = Modifier.size(48.dp)) {
                                         Icon(Icons.Outlined.Refresh, "Actualizar solo el saldo", tint = Mint, modifier = Modifier.size(22.dp))
                                     }
@@ -213,6 +230,49 @@ private val Navy = Color(0xFF35234F)
                                     else -> "Consulta tu línea para ver el saldo real."
                                 }, color = Color(0xFFDDCEED), fontSize = 12.sp)
                                 balance?.expiresAt()?.let { Text(expirationLabel(it, now), color = Color(0xFFDDCEED), fontSize = 12.sp) }
+                                HorizontalDivider(color = Color.White.copy(alpha = 0.2f), modifier = Modifier.padding(vertical = 4.dp))
+                                val general = data?.bundles()?.firstOrNull { it.kind() == "general" }
+                                Column(Modifier.fillMaxWidth()) {
+                                    SimResource("Internet", general?.let { if (it.unlimited()) "Ilimitado" else "${gb(it.bytes())} GB" } ?: "—",
+                                        Icons.Outlined.DataUsage, enabled, data, now, state.isQuerying(CubacelQuery.DATA),
+                                        general?.expiresAt() ?: data?.expiresAt()) { onQuery(CubacelQuery.DATA) }
+                                    SimResource("Minutos", voice?.voiceSeconds()?.let { "${number(BigDecimal(it).divide(BigDecimal(60), 2, java.math.RoundingMode.DOWN))} min" } ?: "—",
+                                        Icons.Outlined.Call, enabled, voice, now, state.isQuerying(CubacelQuery.VOICE)) { onQuery(CubacelQuery.VOICE) }
+                                    SimResource("Mensajes", sms?.smsCount()?.let { "$it SMS" } ?: "—", Icons.Outlined.Sms,
+                                        enabled, sms, now, state.isQuerying(CubacelQuery.SMS)) { onQuery(CubacelQuery.SMS) }
+                                    SimResource("Bonos", bonus?.let { "${it.bundles().size} bolsas" } ?: "—", Icons.Outlined.Redeem,
+                                        enabled, bonus, now, state.isQuerying(CubacelQuery.BONUSES_AND_USD_PLANS)) { onQuery(CubacelQuery.BONUSES_AND_USD_PLANS) }
+                                }
+                                val bundleReadings = listOfNotNull(data, bonus)
+                                run {
+                                    HorizontalDivider(color = Color.White.copy(alpha = 0.2f))
+                                    TextButton(onClick = { showPackages = !showPackages }, modifier = Modifier.fillMaxWidth(),
+                                        colors = ButtonDefaults.textButtonColors(contentColor = Mint)) {
+                                        Text(if (showPackages) "Ocultar detalles" else "Ver detalles", modifier = Modifier.weight(1f))
+                                        Icon(if (showPackages) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore, null)
+                                    }
+                                    if (showPackages) {
+                                        listOf("Internet general" to data, "Minutos" to voice, "Mensajes" to sms, "Bonos" to bonus).forEach { (label, reading) ->
+                                            Column(Modifier.padding(vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                                Text(label, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                                                Text(reading?.let { "${freshnessLabel(it.receivedAt(), now)} · ${stamp(it.receivedAt())}" } ?: "Sin lectura. Toca el recurso para consultarlo.",
+                                                    color = Color(0xFFDDCEED), fontSize = 12.sp)
+                                                reading?.expiresAt()?.let { Text(expirationLabel(it, now), fontSize = 12.sp,
+                                                    color = if (isExpired(it, now)) Color(0xFFFFC4BA) else Color(0xFFDDCEED)) }
+                                            }
+                                        }
+                                        if (bundleReadings.any { it.bundles().isNotEmpty() }) Text("Paquetes de datos", color = Mint, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                    }
+                                    if (showPackages) bundleReadings.forEach { reading -> reading.bundles().forEach { bundle ->
+                                        Column(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                            Text(bundleLabel(bundle.kind()), color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                                            Text(if (bundle.unlimited()) "Ilimitado" else "${gb(bundle.bytes())} GB", fontWeight = FontWeight.Bold, color = Mint, fontSize = 18.sp)
+                                            Text(bundle.expiresAt()?.let { expirationLabel(it, now) } ?: "Vigencia no informada", fontSize = 12.sp,
+                                                color = if (isExpired(bundle.expiresAt(), now)) Color(0xFFFFC4BA) else Color(0xFFDDCEED))
+                                            Text(freshnessLabel(reading.receivedAt(), now), fontSize = 12.sp, color = Color(0xFFDDCEED))
+                                        }
+                                    } }
+                                }
                                 Button(onClick = onRefreshAll, enabled = enabled,
                                     colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Navy,
                                         disabledContainerColor = Color(0xFF705782), disabledContentColor = Color(0xFFD9CBE4)),
@@ -251,23 +311,9 @@ private val Navy = Color(0xFF35234F)
                                 ActionTile("Comprar planes", "Menú de Cubacel", Icons.Outlined.ShoppingBag, Color(0xFFECE6F4), Modifier.weight(1f)) { buyPlans = true }
                             }
                         }
-                        item { SectionTitle("Tus recursos", "Toca una tarjeta para consultar ese recurso.") }
                         item {
-                            FlowRow(maxItemsInEachRow = if (stacked) 1 else 2, horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                                val general = data?.bundles()?.firstOrNull { it.kind() == "general" }
-                                ResourceCard("Datos", general?.let { if (it.unlimited()) "Ilimitado" else gb(it.bytes()) } ?: "—", "GB · Internet general",
-                                    Icons.Outlined.DataUsage, Color(0xFFE6EEF9), Modifier.weight(1f), enabled, data, now, state.isQuerying(CubacelQuery.DATA), general?.expiresAt() ?: data?.expiresAt()) { onQuery(CubacelQuery.DATA) }
-                                ResourceCard("Minutos", voice?.voiceSeconds()?.let { number(BigDecimal(it).divide(BigDecimal(60), 2, java.math.RoundingMode.DOWN)) } ?: "—",
-                                    "Disponibles", Icons.Outlined.Call, Color(0xFFFFEBDD), Modifier.weight(1f), enabled, voice, now, state.isQuerying(CubacelQuery.VOICE)) { onQuery(CubacelQuery.VOICE) }
-                            }
-                        }
-                        item {
-                            FlowRow(maxItemsInEachRow = if (stacked) 1 else 2, horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                                ResourceCard("Mensajes", sms?.smsCount()?.toString() ?: "—", "SMS disponibles", Icons.Outlined.Sms,
-                                    Color(0xFFEDE8FA), Modifier.weight(1f), enabled, sms, now, state.isQuerying(CubacelQuery.SMS)) { onQuery(CubacelQuery.SMS) }
-                                ResourceCard("Bonos", bonus?.let { "${it.bundles().size}" } ?: "—", "Bolsas de datos", Icons.Outlined.Redeem,
-                                    Color(0xFFE4F0E9), Modifier.weight(1f), enabled, bonus, now, state.isQuerying(CubacelQuery.BONUSES_AND_USD_PLANS)) { onQuery(CubacelQuery.BONUSES_AND_USD_PLANS) }
-                            }
+                            ActionTile("Transferir saldo", "Enviar a un número o destinatario guardado", Icons.Outlined.Send,
+                                Color(0xFFE4F0E9), Modifier.fillMaxWidth()) { transfer = true }
                         }
                         item {
                             UsageTrendsCard(DashboardInsights.trends(state.entries, state.selected, now),
@@ -298,28 +344,9 @@ private val Navy = Color(0xFF35234F)
                                 Text(stamp(purchased.receivedAt()), color = Muted, fontSize = 11.sp)
                             }
                         }
-                        val bundleReadings = listOfNotNull(data, bonus)
-                        if (bundleReadings.any { it.bundles().isNotEmpty() }) item {
-                            WhiteCard {
-                                TextButton(onClick = { showPackages = !showPackages }, modifier = Modifier.fillMaxWidth()) {
-                                    Text(if (showPackages) "Ocultar paquetes" else "Ver detalle de paquetes", modifier = Modifier.weight(1f))
-                                    Icon(if (showPackages) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore, null)
-                                }
-                                if (showPackages) bundleReadings.forEach { reading -> reading.bundles().forEach { bundle ->
-                                    Row(Modifier.fillMaxWidth().padding(vertical = 7.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                                        Column(Modifier.weight(1f)) {
-                                            Text(bundleLabel(bundle.kind()), fontSize = 14.sp, fontWeight = FontWeight.Medium)
-                                            Text(bundle.expiresAt()?.let { expirationLabel(it, now) } ?: "Vigencia no informada", fontSize = 12.sp,
-                                                color = if (isExpired(bundle.expiresAt(), now)) MaterialTheme.colorScheme.error else Muted)
-                                            Text(freshnessLabel(reading.receivedAt(), now), fontSize = 12.sp, color = Muted)
-                                        }
-                                        Text(if (bundle.unlimited()) "Ilimitado" else "${gb(bundle.bytes())} GB", fontWeight = FontWeight.Bold, color = Teal, fontSize = 14.sp)
-                                    }
-                                } }
-                            }
-                        }
                         item { PrivacyFooter() }
                     } else if (page == 1) {
+                        item { TransferHistory(state.transfers.filter { it.subscription == state.selected }, state.transferSaving || state.managingLine, model::transferResult) }
                         val filtered = HistoryFilter.apply(entries, historyCategory, historyDays, now)
                         item {
                             WhiteCard {
@@ -373,6 +400,7 @@ private val Navy = Color(0xFF35234F)
                         item {
                             WhiteCard {
                                 Text("Conexión y permisos", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                                SettingsRow("Destinatarios y transferencias", Icons.Outlined.PeopleOutline) { transfer = true }
                                 SettingsRow("Actualizar tarjetas SIM", Icons.Outlined.Refresh) { model.refreshLines() }
                                 SettingsRow("Gestionar SIM en Android", Icons.Outlined.SimCard, onSettings)
                                 SettingsRow("Permisos de la aplicación", Icons.Outlined.Security, onAppSettings)
@@ -423,6 +451,7 @@ private val Navy = Color(0xFF35234F)
                 }
             }
         }
+        if (transfer) TransferPanel(state, model, onPickContact, onTransfer) { transfer = false }
         if (buyPlans) AlertDialog(onDismissRequest = { buyPlans = false },
             title = { Text("Comprar un plan") },
             text = {
@@ -454,8 +483,8 @@ private val Navy = Color(0xFF35234F)
                 dismissButton = { TextButton(onClick = { rename = null }) { Text("Cancelar") } })
         }
         if (delete) AlertDialog(onDismissRequest = { delete = false }, title = { Text("¿Eliminar datos de $deleteLabel?") },
-            text = { Text("Se borrarán las lecturas y nombres guardados de ${if (deleteSubscription == null) "todas las líneas" else "esta línea"}. Se desactivará la importación SMS para evitar reimportar los mensajes. No se puede deshacer.") },
-            confirmButton = { TextButton(onClick = { delete = false; model.clearHistory(deleteSubscription) }, enabled = !state.busy && !state.managingLine) { Text("Eliminar") } },
+            text = { Text("Se borrarán las lecturas, nombres y registros de transferencia de ${if (deleteSubscription == null) "todas las líneas" else "esta línea"}. ${if (deleteSubscription == null) "También se borrarán todos los destinatarios guardados. " else "Los destinatarios guardados se conservarán. "}Se desactivará la importación SMS. No se puede deshacer.") },
+            confirmButton = { TextButton(onClick = { delete = false; model.clearHistory(deleteSubscription) }, enabled = !state.busy && !state.managingLine && !state.transferSaving) { Text("Eliminar") } },
             dismissButton = { TextButton(onClick = { delete = false }) { Text("Cancelar") } })
     }
 }
@@ -527,26 +556,35 @@ private fun rechargeDate(at: Long) = SimpleDateFormat("d 'de' MMMM 'de' yyyy", L
         }
     }
 }
-@Composable private fun ResourceCard(title: String, value: String, unit: String, icon: ImageVector, tint: Color, modifier: Modifier, enabled: Boolean, reading: CarrierReading?, now: Long, querying: Boolean, expiry: Long? = reading?.expiresAt(), action: () -> Unit) {
-    Surface(onClick = action, enabled = enabled, shape = RoundedCornerShape(21.dp), color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant), modifier = modifier) {
-        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(32.dp).background(if (isSystemInDarkTheme()) MaterialTheme.colorScheme.secondaryContainer else tint, RoundedCornerShape(10.dp)), contentAlignment = Alignment.Center) {
-                    Icon(icon, null, tint = Teal, modifier = Modifier.size(18.dp))
-                }
-                Spacer(Modifier.width(7.dp))
-                Text(title, fontSize = 14.sp, fontWeight = FontWeight.Medium, color = Ink, modifier = Modifier.weight(1f))
-                if (querying) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
-                else Icon(Icons.Outlined.Refresh, null, tint = Muted, modifier = Modifier.size(16.dp))
+@Composable private fun SimResource(title: String, value: String, icon: ImageVector,
+    enabled: Boolean, reading: CarrierReading?, now: Long, querying: Boolean,
+    expiry: Long? = reading?.expiresAt(), action: () -> Unit) {
+    val expired = isExpired(expiry, now)
+    val largeText = LocalDensity.current.fontScale > 1.3f
+    Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).clip(RoundedCornerShape(10.dp))
+        .clickable(enabled = enabled, onClickLabel = "Consultar $title", onClick = action)
+        .semantics(mergeDescendants = true) {
+            contentDescription = "$title: $value. " + (if (querying) "Consultando." else reading?.let { freshnessLabel(it.receivedAt(), now) } ?: "Sin lectura.") +
+                (expiry?.let { " ${expirationLabel(it, now)}" } ?: "")
+        }.padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+        Icon(icon, null, tint = Mint, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.width(10.dp))
+        if (largeText) {
+            Column(Modifier.weight(1f)) {
+                Text(title, color = Color(0xFFDDCEED), fontSize = 14.sp)
+                Text(value, color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+                if (expired) Text("Vencido", color = Color(0xFFFFC4BA), fontSize = 12.sp)
             }
-            Text(value, fontSize = if (value.length > 8) 22.sp else 30.sp, lineHeight = 34.sp, fontWeight = FontWeight.SemiBold, color = Ink)
-            Text(unit, fontSize = 12.sp, color = Muted)
-            Text(if (querying) "Consultando…" else reading?.let { freshnessLabel(it.receivedAt(), now) } ?: "Sin lectura", fontSize = 12.sp, color = Muted)
-
-            expiry?.let { Text(expirationLabel(it, now), fontSize = 12.sp,
-                color = if (isExpired(it, now)) MaterialTheme.colorScheme.error else Muted) }
+        } else {
+            Text(title, fontSize = 14.sp, color = Color(0xFFDDCEED), modifier = Modifier.weight(1f))
+            Column(Modifier.weight(1f), horizontalAlignment = Alignment.End) {
+                Text(value, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = Color.White, textAlign = androidx.compose.ui.text.style.TextAlign.End)
+                if (expired) Text("Vencido", fontSize = 12.sp, color = Color(0xFFFFC4BA))
+            }
         }
+        Spacer(Modifier.width(12.dp))
+        if (querying) CircularProgressIndicator(Modifier.size(16.dp), color = Mint, strokeWidth = 2.dp)
+        else Icon(Icons.Outlined.Refresh, null, tint = Mint, modifier = Modifier.size(16.dp))
     }
 }
 @Composable private fun SettingsRow(label: String, icon: ImageVector, action: () -> Unit) {

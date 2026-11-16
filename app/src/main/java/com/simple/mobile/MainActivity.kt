@@ -8,6 +8,8 @@ import android.net.Uri
 import android.os.Bundle
 import android.os.Build
 import android.provider.Settings
+import android.provider.ContactsContract
+import com.simple.mobile.domain.transfer.TransferPolicy
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -19,6 +21,17 @@ import com.simple.mobile.presentation.Dashboard
 import com.simple.mobile.presentation.DashboardViewModel
 
 class MainActivity : ComponentActivity() {
+    private var externalSubscription: Int? = null
+    private var externalLeft = false
+    private val contactPicker = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == RESULT_OK) result.data?.data?.let { uri ->
+            try {
+                contentResolver.query(uri, arrayOf(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME, ContactsContract.CommonDataKinds.Phone.NUMBER), null, null, null)?.use { cursor ->
+                    if (cursor.moveToFirst()) model.pickedContact(cursor.getString(0).orEmpty(), cursor.getString(1).orEmpty())
+                }
+            } catch (_: Exception) { model.notify("No se pudo leer ese contacto. Puedes escribir el número manualmente.") }
+        }
+    }
     private var pendingQuery: String? = null
     private var pendingSubscription: Int = -1
     private lateinit var updates: com.simple.mobile.data.updates.AppUpdates
@@ -42,6 +55,8 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         updates = ViewModelProvider(this)[com.simple.mobile.data.updates.AppUpdates::class.java]
         model = ViewModelProvider(this)[DashboardViewModel::class.java]
+        externalSubscription = savedInstanceState?.getInt("external_subscription", -1)?.takeIf { it >= 0 }
+        externalLeft = savedInstanceState?.getBoolean("external_left") ?: false
         pendingQuery = savedInstanceState?.getString("pending_query")
         pendingSubscription = savedInstanceState?.getInt("pending_subscription", -1) ?: -1
         lifecycleScope.launch {
@@ -73,20 +88,45 @@ class MainActivity : ComponentActivity() {
                 onSyncSms = { model.syncCarrierSms() },
                 onSettings = { open(Intent(Settings.ACTION_WIRELESS_SETTINGS)) },
                 onAppSettings = { open(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName"))) },
-                onDial = { code -> open(Intent(Intent.ACTION_DIAL, Uri.fromParts("tel", code, null))) },
-                onRechargeSite = { open(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.etecsa.cu/es/movil/necesitas-saldo"))) })
+                onDial = { code -> openCarrier(Intent(Intent.ACTION_DIAL, Uri.fromParts("tel", code, null)), model.state.value.selected) },
+                onPickContact = {
+                    try { contactPicker.launch(Intent(Intent.ACTION_PICK, ContactsContract.CommonDataKinds.Phone.CONTENT_URI)) }
+                    catch (_: ActivityNotFoundException) { model.notify("No hay un selector de contactos disponible. Escribe el número manualmente.") }
+                },
+                onTransfer = { draft -> openCarrier(Intent(Intent.ACTION_DIAL, Uri.fromParts("tel", TransferPolicy.MENU, null)), draft.subscription) },
+                onRechargeSite = { openCarrier(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.etecsa.cu/es/movil/necesitas-saldo")), model.state.value.selected) })
         }
     }
     override fun onResume() {
         super.onResume()
         if (::model.isInitialized) {
             model.refreshLines()
+            if (externalLeft) {
+                externalSubscription?.let { model.offerRefresh(it) }
+                externalSubscription = null; externalLeft = false
+            }
             resumePendingQuery()
             model.refreshReminderSettings()
             model.refreshSmsPermissions()
             selectReminderLine(intent)
             if ((application as SimpleApplication).smsImport.state.value.enabled &&
                 checkSelfPermission(Manifest.permission.READ_SMS) == PackageManager.PERMISSION_GRANTED) model.syncCarrierSms(false)
+        }
+    }
+    override fun onPause() {
+        if (externalSubscription != null) externalLeft = true
+        super.onPause()
+    }
+    private fun openCarrier(intent: Intent, subscription: Int): Boolean {
+        return try {
+            startActivity(intent)
+            externalSubscription = subscription.takeIf { it >= 0 }
+            externalLeft = false
+            true
+        } catch (_: ActivityNotFoundException) {
+            model.notify("No hay una aplicación disponible para abrir esta opción."); false
+        } catch (_: SecurityException) {
+            model.notify("Android no permitió abrir esta opción."); false
         }
     }
     private fun installUpdate() {
@@ -123,6 +163,8 @@ class MainActivity : ComponentActivity() {
         return true
     }
     override fun onSaveInstanceState(outState: Bundle) {
+        outState.putInt("external_subscription", externalSubscription ?: -1)
+        outState.putBoolean("external_left", externalLeft)
         outState.putString("pending_query", pendingQuery)
         outState.putInt("pending_subscription", pendingSubscription)
         super.onSaveInstanceState(outState)

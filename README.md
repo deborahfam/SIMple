@@ -3,6 +3,14 @@
 Android app for Cubacel balance, data bundles, voice minutes, SMS and recharge status.
 Kotlin + Jetpack Compose presentation, MVVM, native subscription-aware USSD and on-device parsing.
 
+## Download and update
+
+Download the APK from [GitHub Releases](https://github.com/deborahfam/SIMple/releases/latest).
+For version 0.5.0, choose **SIMple-6.apk**, open it on Android, and confirm the update.
+Existing SIMple users can also use **Ajustes → Actualizar SIMple → Buscar actualización**.
+This build uses the same signing key as the existing locally installed builds, so Android can
+update the app in place while preserving saved readings and recipients. Do not uninstall first.
+
 ## What works
 
 - Separate selectable cards for active SIMs, including Dual SIM. SMS must carry a currently active Cubacel subscription ID; unknown historical SIM associations are skipped.
@@ -26,6 +34,7 @@ Kotlin + Jetpack Compose presentation, MVVM, native subscription-aware USSD and 
   the in-flight response to be saved. Any query or storage failure stops the sequence without retries.
 - Recharge and plan actions open the phone dialer or ETECSA website for user completion.
 - Optional sender-filtered SMS import and new-message ingestion after Android permissions.
+- Optional single-contact picker without address-book permission. Saved recipients and transfer preparation records remain encrypted locally.
 - No contacts or identifier permissions; no telemetry or raw carrier logs. Internet is used only for user-requested GitHub update checks and APK downloads.
 
 ## Limits
@@ -184,9 +193,31 @@ The repository source itself is not installable: it must first be built into a s
 initial version containing the updater must be installed manually. Android may require allowing
 this app to install packages: [Android package installation permission](https://developer.android.com/reference/android/content/pm/PackageManager#canRequestPackageInstalls()).
 
-## Compact dashboard (0.4.0)
+## Compact dashboard (0.5.0)
 
-Home prioritizes the selected SIM, balance and four resource tiles. Refresh all lives inside the
+Home groups the selected SIM’s balance and four compact resource rows in one card.
+Resource timestamps and package breakdowns are available under **Ver detalles**. Refresh all lives inside the
 balance card; the smaller refresh icon queries only balance. Line renaming and deletion are in
 Settings. SMS connection is summarized on Home with a link to Settings, and package breakdowns
 expand on demand. Query progress, expiry warnings and damaged-reading notices remain visible.
+
+## Saved recipients and balance transfers
+
+**Transferir saldo** prepares a recipient and amount, shows the sending SIM and a review,
+then opens the interactive `*234#` dialer menu. The user enters the recipient, amount and
+PIN in the carrier menu and chooses the SIM there; SIMple does not submit a transfer or
+store a PIN. The number can be copied explicitly from the review. Published reference
+fee: 5 CUP, with up to three daily transfers (ETECSA verified November 16, 2026);
+the user must confirm current carrier conditions.
+
+Save up to 50 recipients with nicknames and favorites; edit or delete them in the transfer
+screen, also accessible from Settings. Android's phone-contact picker reads only the selected
+contact, without requesting READ_CONTACTS. Recipient numbers and names are stored in
+AES-GCM encrypted database rows. Database schema 4 migrates existing readings in place.
+
+History retains up to 100 transfer preparations, scoped to the selected SIM, with separate
+prepared, menu-opened, open-failed and user-reported outcome states. User confirmation is
+explicitly labelled as a personal annotation, never carrier verification. Clearing a line
+removes its transfer records but retains shared recipients; clearing all app data also removes
+recipients. Returning from a carrier menu or recharge website offers a refresh for the original
+SIM; no automatic carrier queries are sent.
