@@ -8,6 +8,8 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -23,7 +25,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
@@ -83,39 +84,43 @@ private val Navy = Color(0xFF35234F)
     MaterialTheme(colorScheme = if (isSystemInDarkTheme()) darkColorScheme(primary = Teal, background = Paper, surface = Color(0xFF241F2E), secondaryContainer = Color(0xFF383044), onSecondaryContainer = Ink, outlineVariant = Color(0xFF40374D), onSurface = Ink, onBackground = Ink) else lightColorScheme(primary = Teal, secondary = Navy, background = Paper, surface = Color.White, secondaryContainer = Color(0xFFEEE8F7), onSecondaryContainer = Ink, outlineVariant = Color(0xFFE8E2EF),
         onSurface = Ink, onBackground = Ink)) {
         Scaffold(containerColor = Paper, snackbarHost = { SnackbarHost(snackbar) }, bottomBar = {
-            NavigationBar(containerColor = MaterialTheme.colorScheme.surface, tonalElevation = 0.dp) {
-                listOf("Inicio" to Icons.Outlined.SpaceDashboard, "Historial" to Icons.Outlined.History,
-                    "Ajustes" to Icons.Outlined.Tune).forEachIndexed { index, item ->
-                    NavigationBarItem(selected = page == index, onClick = { page = index }, icon = { Icon(item.second, null) },
-                        label = { Text(item.first) }, colors = NavigationBarItemDefaults.colors(indicatorColor = Mint, selectedIconColor = Navy))
+            Box(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 16.dp, vertical = 10.dp), contentAlignment = Alignment.Center) {
+                Surface(Modifier.widthIn(max = 600.dp).fillMaxWidth(), shape = RoundedCornerShape(32.dp), color = MaterialTheme.colorScheme.surface) {
+                    Row(Modifier.padding(6.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        listOf("Inicio" to Icons.Outlined.SpaceDashboard, "Historial" to Icons.Outlined.History,
+                            "Ajustes" to Icons.Outlined.Tune).forEachIndexed { index, item ->
+                            val active = page == index
+                            Column(Modifier.weight(1f).clip(RoundedCornerShape(26.dp))
+                                .background(if (active) Mint else Color.Transparent)
+                                .selectable(selected = active, role = Role.Tab, onClick = { page = index })
+                                .heightIn(min = 56.dp).padding(vertical = 8.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                Icon(item.second, null, tint = if (active) Navy else Muted, modifier = Modifier.size(22.dp))
+                                Text(item.first, color = if (active) Navy else Muted, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                            }
+                        }
+                    }
                 }
             }
         }) { padding ->
             Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.TopCenter) {
                 LazyColumn(Modifier.widthIn(max = 640.dp).fillMaxWidth(),
                     state = when (page) { 1 -> historyScroll; 2 -> settingsScroll; else -> homeScroll },
-                    contentPadding = PaddingValues(horizontal = 20.dp, vertical = 20.dp),
+                    contentPadding = PaddingValues(horizontal = 20.dp, vertical = 12.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     item {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(Modifier.size(38.dp).clip(RoundedCornerShape(12.dp)).background(Navy), contentAlignment = Alignment.Center) {
-                                Icon(Icons.Outlined.SimCard, null, tint = Mint, modifier = Modifier.size(23.dp))
-                            }
-                            Spacer(Modifier.width(10.dp))
-                            Text("SIMple", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Ink)
+                            Icon(Icons.Outlined.SimCard, null, tint = Teal, modifier = Modifier.size(28.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("SIMple", fontSize = 23.sp, fontWeight = FontWeight.Bold, color = Ink)
                             Spacer(Modifier.weight(1f))
-                            if (!stacked) Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = CircleShape) {
-                                Row(Modifier.padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Outlined.Lock, null, modifier = Modifier.size(13.dp), tint = Teal); Spacer(Modifier.width(5.dp))
-                                    Text("PRIVADO", color = Teal, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                }
-                            }
+                            Icon(Icons.Outlined.VerifiedUser, "Datos cifrados en este dispositivo", tint = Muted, modifier = Modifier.size(22.dp))
                         }
                     }
-                    item {
+                    if (page != 0) item {
                         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             Text(when (page) { 1 -> "Tu historial"; 2 -> "A tu manera"; else -> "Tu línea, de un vistazo" },
-                                fontSize = 28.sp, lineHeight = 34.sp, fontWeight = FontWeight.Bold, color = Ink,
+                                fontSize = 24.sp, lineHeight = 30.sp, fontWeight = FontWeight.Bold, color = Ink,
                                 modifier = Modifier.semantics { heading() })
                             Text(when (page) {
                                 1 -> "Revisa tus consultas y mensajes guardados."
@@ -146,22 +151,22 @@ private val Navy = Color(0xFF35234F)
                                     val selected = state.selected == line.subscription
                                     Surface(onClick = { model.select(line.subscription) },
                                         modifier = Modifier.semantics { this.selected = selected },
-                                        border = BorderStroke(1.dp, if (selected) Navy else MaterialTheme.colorScheme.outlineVariant),
-                                        shape = RoundedCornerShape(18.dp),
-                                        color = if (selected) Navy else MaterialTheme.colorScheme.surface) {
-                                        Row(Modifier.padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                                            Icon(Icons.Outlined.SimCard, null, tint = if (selected) Mint else Muted, modifier = Modifier.size(21.dp))
+                                        border = BorderStroke(1.dp, if (selected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.outlineVariant),
+                                        shape = RoundedCornerShape(14.dp),
+                                        color = if (selected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surface) {
+                                        Row(Modifier.heightIn(min = 48.dp).padding(horizontal = 14.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(Icons.Outlined.SimCard, null, tint = if (selected) Teal else Muted, modifier = Modifier.size(21.dp))
                                             Spacer(Modifier.width(10.dp))
                                             Column {
-                                                Text(line.label, color = if (selected) Color.White else Ink,
+                                                Text(line.label, color = if (selected) Teal else Ink,
                                                     fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                                                Text(if (!line.active) "Historial guardado" else if (line.cubacel) "Cubacel" else "Operador sin integración", color = if (selected) Color(0xFFD6C8E8) else Muted, fontSize = 12.sp)
+                                                if (!line.active || !line.cubacel) Text(if (!line.active) "Historial guardado" else "Operador sin integración", color = Muted, fontSize = 12.sp)
                                             }
-                                            if (selected) { Spacer(Modifier.width(12.dp)); Icon(Icons.Outlined.CheckCircle, null, tint = Mint, modifier = Modifier.size(17.dp)) }
+                                            if (selected) { Spacer(Modifier.width(12.dp)); Icon(Icons.Outlined.CheckCircle, null, tint = Teal, modifier = Modifier.size(17.dp)) }
                                         }
                                     }
                                 }
-                                item { OutlinedIconButton(onClick = onSettings, modifier = Modifier.padding(top = 6.dp)) { Icon(Icons.Outlined.Add, "Añadir o activar SIM") } }
+                                item { OutlinedIconButton(onClick = onSettings, modifier = Modifier.size(48.dp)) { Icon(Icons.Outlined.Add, "Añadir o activar SIM") } }
                             }
                         }
                     }
@@ -206,21 +211,24 @@ private val Navy = Color(0xFF35234F)
                         val selectedLine = state.displayLines.firstOrNull { it.subscription == state.selected }
                         val enabled = !state.busy && !state.managingLine && state.lines.any { it.subscription == state.selected && it.cubacel } && state.storageReady
                         item {
-                            Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(26.dp))
-                                .background(Brush.linearGradient(listOf(Navy, Color(0xFF65468D)))).padding(24.dp),
-                                verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp))
+                                .background(Navy).padding(20.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                        selectedLine?.let { Text(it.label, color = Mint, fontSize = 14.sp, fontWeight = FontWeight.SemiBold) }
-                                        Text("SALDO PRINCIPAL", fontSize = 11.sp, letterSpacing = 1.8.sp, color = Color(0xFFDDCEED))
+                                        Text("Saldo disponible", fontSize = 13.sp, color = Color(0xFFDDCEED))
+                                        FlowRow(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                            Text(balance?.balanceCup() ?: "—", color = Color.White,
+                                                fontSize = if ((balance?.balanceCup()?.length ?: 0) > 8) 30.sp else 38.sp,
+                                                lineHeight = 44.sp, fontWeight = FontWeight.SemiBold)
+                                            Text(" CUP", color = Color(0xFFDDCEED), fontSize = 14.sp,
+                                                modifier = Modifier.align(Alignment.Bottom).padding(bottom = 5.dp))
+                                        }
                                     }
-                                    IconButton(onClick = { onQuery(CubacelQuery.BALANCE) }, enabled = enabled, modifier = Modifier.size(48.dp)) {
-                                        Icon(Icons.Outlined.Refresh, "Actualizar solo el saldo", tint = Mint, modifier = Modifier.size(22.dp))
+                                    IconButton(onClick = { onQuery(CubacelQuery.BALANCE) }, enabled = enabled,
+                                        modifier = Modifier.size(48.dp).background(Color.White.copy(alpha = 0.07f), CircleShape)) {
+                                        Icon(Icons.Outlined.Refresh, "Actualizar solo el saldo", tint = Mint, modifier = Modifier.size(21.dp))
                                     }
-                                }
-                                FlowRow(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                    Text(balance?.balanceCup() ?: "—", color = Color.White, fontSize = if ((balance?.balanceCup()?.length ?: 0) > 8) 34.sp else 46.sp, lineHeight = 52.sp, fontWeight = FontWeight.SemiBold)
-                                    Text(" CUP", color = Color(0xFFDDCEED), fontSize = 16.sp, modifier = Modifier.align(Alignment.Bottom).padding(bottom = 7.dp))
                                 }
                                 Text(balance?.let { "${freshnessLabel(it.receivedAt(), now)} · ${stamp(it.receivedAt())}" } ?: when {
                                     !state.permission -> "Conecta tu SIM para consultar el saldo."
@@ -302,18 +310,15 @@ private val Navy = Color(0xFF35234F)
                             }
                         }
                         item {
-                            AttentionCard(DashboardInsights.notices(state.entries, state.selected, now), enabled, now,
-                                onQuery, onRefreshAll, { recharge = true }, { buyPlans = true })
-                        }
-                        item {
-                            FlowRow(maxItemsInEachRow = if (stacked) 1 else 2, horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                                ActionTile("Recargar", "Añade saldo", Icons.Outlined.AddCard, Color(0xFFEDE8FA), Modifier.weight(1f)) { recharge = true }
-                                ActionTile("Comprar planes", "Menú de Cubacel", Icons.Outlined.ShoppingBag, Color(0xFFECE6F4), Modifier.weight(1f)) { buyPlans = true }
+                            FlowRow(maxItemsInEachRow = if (stacked) 1 else 3, horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                QuickAction("Recargar", Icons.Outlined.AddCard, Modifier.weight(1f)) { recharge = true }
+                                QuickAction("Comprar planes", Icons.Outlined.ShoppingBag, Modifier.weight(1f)) { buyPlans = true }
+                                QuickAction("Transferir", Icons.Outlined.Send, Modifier.weight(1f)) { transfer = true }
                             }
                         }
                         item {
-                            ActionTile("Transferir saldo", "Enviar a un número o destinatario guardado", Icons.Outlined.Send,
-                                Color(0xFFE4F0E9), Modifier.fillMaxWidth()) { transfer = true }
+                            AttentionCard(DashboardInsights.notices(state.entries, state.selected, now), enabled, now,
+                                onQuery, onRefreshAll, { recharge = true }, { buyPlans = true })
                         }
                         item {
                             UsageTrendsCard(DashboardInsights.trends(state.entries, state.selected, now),
@@ -543,16 +548,12 @@ private fun rechargeDate(at: Long) = SimpleDateFormat("d 'de' MMMM 'de' yyyy", L
         Text(detail, fontSize = 13.sp, lineHeight = 19.sp, color = Muted)
     }
 }
-@Composable private fun ActionTile(title: String, detail: String, icon: ImageVector, color: Color, modifier: Modifier, action: () -> Unit) {
-    Surface(onClick = action, color = if (isSystemInDarkTheme()) MaterialTheme.colorScheme.secondaryContainer else color,
-        shape = RoundedCornerShape(20.dp), modifier = modifier) {
-        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Icon(icon, null, tint = Teal, modifier = Modifier.size(24.dp))
-                Icon(Icons.Outlined.ArrowOutward, null, tint = Muted, modifier = Modifier.size(18.dp))
-            }
-            Text(title, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-            Text(detail, fontSize = 13.sp, color = Muted)
+@Composable private fun QuickAction(title: String, icon: ImageVector, modifier: Modifier, action: () -> Unit) {
+    Surface(onClick = action, color = MaterialTheme.colorScheme.surface, shape = RoundedCornerShape(18.dp), modifier = modifier) {
+        Column(Modifier.heightIn(min = 88.dp).padding(horizontal = 6.dp, vertical = 14.dp),
+            horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(9.dp, Alignment.CenterVertically)) {
+            Icon(icon, null, tint = Teal, modifier = Modifier.size(24.dp))
+            Text(title, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
         }
     }
 }
@@ -662,19 +663,16 @@ private fun expirationLabel(at: Long, now: Long) =
     var expanded by remember(notices) { mutableStateOf(false) }
     if (notices.isEmpty()) return
     WhiteCard {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Outlined.Info, null, tint = Teal)
-            Spacer(Modifier.width(10.dp))
-            Text("Para tener en cuenta", fontSize = 18.sp, fontWeight = FontWeight.Bold,
-                modifier = Modifier.semantics { heading() })
-        }
         (if (expanded) notices else notices.take(1)).forEach { notice ->
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(notice.title, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Icon(Icons.Outlined.Info, null, tint = Teal, modifier = Modifier.size(20.dp))
+                    Text(notice.title, fontWeight = FontWeight.SemiBold, fontSize = 16.sp, modifier = Modifier.weight(1f).semantics { heading() })
+                }
                 Text(notice.detail, fontSize = 13.sp, color = Muted)
                 notice.at?.let { Text(freshnessLabel(it, now), fontSize = 12.sp, color = Muted) }
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = { if (notice.refreshAll) refresh() else query(notice.query) }, enabled = enabled) {
+                    TextButton(onClick = { if (notice.refreshAll) refresh() else query(notice.query) }, enabled = enabled) {
                         Text(if (notice.refreshAll) "Actualizar todo" else "Consultar")
                     }
                     if (!notice.refreshAll) {
