@@ -106,6 +106,7 @@ class MainActivity : ComponentActivity() {
                 externalSubscription = null; externalLeft = false
             }
             resumePendingQuery()
+            updates.checkOnOpen()
             model.refreshReminderSettings()
             model.refreshSmsPermissions()
             selectReminderLine(intent)

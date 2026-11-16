@@ -53,21 +53,27 @@ class EncryptedReadingStore(context: Context, name: String = "readings.db") : SQ
         }
     }
     @Synchronized fun nicknames(): Map<Int, String> = profileRows().associate { it.second.getInt("subscription") to it.second.getString("nickname") }
+    @Synchronized fun rechargeDates(): Map<Int, java.time.LocalDate> = profileRows().mapNotNull { (_, json) ->
+        json.optString("rechargeDate").takeIf { it.isNotBlank() }?.let { json.getInt("subscription") to java.time.LocalDate.parse(it) }
+    }.toMap()
+    @Synchronized fun setRechargeDate(subscription: Int, date: java.time.LocalDate?) {
+        require(subscription >= 0)
+        updateProfile(subscription) { json -> if (date == null) json.remove("rechargeDate") else json.put("rechargeDate", date.toString()) }
+    }
     @Synchronized fun rename(subscription: Int, nickname: String) {
         require(subscription >= 0)
         val name = nickname.trim()
         require(name.length <= 40 && name.none { it.isISOControl() })
-        val existing = profileRows().firstOrNull { it.second.getInt("subscription") == subscription }?.first
-        if (name.isEmpty()) {
-            existing?.let { writableDatabase.delete("line_profiles", "id=?", arrayOf(it)) }
-            return
-        }
-        val id = existing ?: UUID.randomUUID().toString()
-        val cipher = Cipher.getInstance("AES/GCM/NoPadding").apply { init(Cipher.ENCRYPT_MODE, key()); updateAAD(id.toByteArray()) }
-        val bytes = JSONObject().put("subscription", subscription).put("nickname", name).toString().toByteArray(Charsets.UTF_8)
-        val payload = try { cipher.doFinal(bytes) } finally { bytes.fill(0) }
-        val values = ContentValues().apply { put("id", id); put("iv", cipher.iv); put("payload", payload) }
-        writableDatabase.insertWithOnConflict("line_profiles", null, values, SQLiteDatabase.CONFLICT_REPLACE).also { check(it != -1L) }
+        updateProfile(subscription) { it.put("nickname", name) }
+    }
+    private fun updateProfile(subscription: Int, update: (JSONObject) -> Unit) {
+        val existing = profileRows().firstOrNull { it.second.getInt("subscription") == subscription }
+        val json = existing?.second ?: JSONObject().put("subscription", subscription).put("nickname", "")
+        update(json)
+        val id = existing?.first ?: UUID.randomUUID().toString()
+        if (json.optString("nickname").isEmpty() && !json.has("rechargeDate")) {
+            writableDatabase.delete("line_profiles", "id=?", arrayOf(id))
+        } else secureWrite("line_profiles", id, json)
     }
     private fun secureRows(table: String): List<Pair<String, JSONObject>> = buildList {
         readableDatabase.rawQuery("SELECT id,iv,payload FROM $table", null).use { cursor ->

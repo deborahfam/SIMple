@@ -11,6 +11,33 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class EncryptedStoreTest {
+    @Test fun rechargeDatesSurviveRenameReopenAndRespectLineDeletion() {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val name = "test-recharge-dates.db"
+        context.deleteDatabase(name)
+        val date = java.time.LocalDate.of(2026, 12, 1)
+        EncryptedReadingStore(context, name).use { store ->
+            store.rename(77, "Personal")
+            store.setRechargeDate(77, date)
+            store.setRechargeDate(88, date.plusDays(1))
+            store.rename(77, "")
+        }
+        EncryptedReadingStore(context, name).use { store ->
+            assertEquals(date, store.rechargeDates()[77])
+            store.rename(77, "Mi tarjeta")
+            assertEquals(date, store.rechargeDates()[77])
+            store.setRechargeDate(77, null)
+            assertEquals("Mi tarjeta", store.nicknames()[77])
+            assertFalse(store.rechargeDates().containsKey(77))
+            store.setRechargeDate(77, date)
+            store.clear(77)
+            assertEquals(mapOf(88 to date.plusDays(1)), store.rechargeDates())
+            store.clear()
+            assertTrue(store.rechargeDates().isEmpty())
+        }
+        context.deleteDatabase(name)
+    }
+
     @Test fun parsedReadingsSurviveReopeningAndRemainEncrypted() {
         val context = ApplicationProvider.getApplicationContext<android.content.Context>()
         val database = "test-readings.db"

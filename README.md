@@ -35,7 +35,7 @@ update the app in place while preserving saved readings and recipients. Do not u
 - Recharge and plan actions open the phone dialer or ETECSA website for user completion.
 - Optional sender-filtered SMS import and new-message ingestion after Android permissions.
 - Optional single-contact picker without address-book permission. Saved recipients and transfer preparation records remain encrypted locally.
-- No contacts or identifier permissions; no telemetry or raw carrier logs. Internet is used only for user-requested GitHub update checks and APK downloads.
+- No contacts or identifier permissions; no telemetry or raw carrier logs. Internet is used only for GitHub update checks (manual or optional once daily on app open) and user-requested APK downloads.
 
 ## Limits
 
@@ -173,7 +173,7 @@ per-line deletion fails safely if a damaged record's SIM association cannot be r
 higher Android versionCode. After downloading, it checks the package ID, exact versionCode,
 and signing certificate against the installed app. Android then asks the user to approve
 installation; if necessary, enable installation from SIMple and tap Install again.
-No balance, SMS or history content is sent to GitHub. Update checks are manual only.
+No balance, SMS or history content is sent to GitHub. Checks are manual by default; Settings offers an optional once-daily check on app open with an in-app update notice.
 
 ### Automatic publication
 
@@ -252,3 +252,36 @@ explicitly labelled as a personal annotation, never carrier verification. Cleari
 removes its transfer records but retains shared recipients; clearing all app data also removes
 recipients. Returning from a carrier menu or recharge website offers a refresh for the original
 SIM; no automatic carrier queries are sent.
+
+## Statistics and recharge planning
+
+**Estadísticas** shows reductions in balance, general Internet, voice and SMS over the last
+7 or 30 days for the selected SIM. These are partial observations from retained readings,
+not an itemized bill: transfers, unobserved purchases and carrier adjustments may affect them.
+Known purchases/recharges, quota increases, expiry changes, unknown/unlimited quotas and
+expired intervals are excluded. The UI shows comparable and excluded interval counts.
+
+Choose a recharge date separately for each SIM; otherwise the latest carrier recharge date
+is used. Personal dates are encrypted in the existing line profile and survive renaming.
+Deleting a line removes its date; clearing all local data removes all dates. The daily data
+budget divides the latest general Internet quota by Havana calendar days until the target
+(including today, excluding recharge day). Stale readings, expired packages or packages
+expiring before the target cannot produce a budget; unknown validity is explicitly labeled.
+It is a suggested upper limit from the last query, not live remaining usage.
+
+**Datos móviles por aplicación** requires optional Android Usage Access. It queries Android's
+NetworkStatsManager off the main thread with a null subscriber ID: all mobile subscriptions
+combined, excluding Wi-Fi. It never attributes this total to the selected SIM or reads an IMSI.
+Counters may lag or differ from carrier billing. Only launcher-app visibility is requested;
+unresolved UIDs are shown as application/service identifiers. Shared UIDs appear together.
+The results remain in memory, are refreshed on entering/resuming Statistics, and are not uploaded.
+
+Local reminders must be enabled separately. Personal recharge dates notify at/after 09:00
+America/Havana, once per date for each active Cubacel SIM, and expire at the next midnight.
+The app also shows a recharge-day card on Home. Personal dates override carrier-date reminders;
+Android may delay delivery, and dates do not guarantee carrier recharge availability.
+
+Settings also offers **Avisar de nuevas versiones al abrir**, disabled by default. When enabled,
+SIMple checks public GitHub Releases at most once per 24 hours on app open and shows an in-app
+notice. Downloads and Android installation still require user action. This is not a background
+notification service.

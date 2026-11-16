@@ -57,6 +57,7 @@ private val Navy = Color(0xFF35234F)
     onTransfer: (com.simple.mobile.domain.transfer.TransferDraft) -> Boolean) {
     val state by model.state.collectAsStateWithLifecycle()
     val update by updates.state.collectAsStateWithLifecycle()
+    val automaticUpdates by updates.automatic.collectAsStateWithLifecycle()
     val stacked = LocalConfiguration.current.screenWidthDp < 360 || LocalDensity.current.fontScale > 1.2f
     val now by produceState(System.currentTimeMillis()) {
         while (true) { value = System.currentTimeMillis(); kotlinx.coroutines.delay(30_000) }
@@ -68,6 +69,7 @@ private val Navy = Color(0xFF35234F)
     var page by rememberSaveable { mutableIntStateOf(0) }
     val homeScroll = rememberLazyListState()
     val historyScroll = rememberLazyListState()
+    val statisticsScroll = rememberLazyListState()
     val settingsScroll = rememberLazyListState()
     var showPackages by rememberSaveable(state.selected) { mutableStateOf(false) }
     var recharge by remember { mutableStateOf(false) }
@@ -88,7 +90,7 @@ private val Navy = Color(0xFF35234F)
                 Surface(Modifier.widthIn(max = 600.dp).fillMaxWidth(), shape = RoundedCornerShape(32.dp), color = MaterialTheme.colorScheme.surface) {
                     Row(Modifier.padding(6.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                         listOf("Inicio" to Icons.Outlined.SpaceDashboard, "Historial" to Icons.Outlined.History,
-                            "Ajustes" to Icons.Outlined.Tune).forEachIndexed { index, item ->
+                            "Ajustes" to Icons.Outlined.Tune, "Estadísticas" to Icons.Outlined.BarChart).forEachIndexed { index, item ->
                             val active = page == index
                             Column(Modifier.weight(1f).clip(RoundedCornerShape(26.dp))
                                 .background(if (active) Mint else Color.Transparent)
@@ -105,7 +107,7 @@ private val Navy = Color(0xFF35234F)
         }) { padding ->
             Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.TopCenter) {
                 LazyColumn(Modifier.widthIn(max = 640.dp).fillMaxWidth(),
-                    state = when (page) { 1 -> historyScroll; 2 -> settingsScroll; else -> homeScroll },
+                    state = when (page) { 1 -> historyScroll; 2 -> settingsScroll; 3 -> statisticsScroll; else -> homeScroll },
                     contentPadding = PaddingValues(horizontal = 20.dp, vertical = 12.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     item {
@@ -119,12 +121,13 @@ private val Navy = Color(0xFF35234F)
                     }
                     if (page != 0) item {
                         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text(when (page) { 1 -> "Tu historial"; 2 -> "A tu manera"; else -> "Tu línea, de un vistazo" },
+                            Text(when (page) { 1 -> "Tu historial"; 2 -> "A tu manera"; 3 -> "Tus estadísticas"; else -> "Tu línea, de un vistazo" },
                                 fontSize = 24.sp, lineHeight = 30.sp, fontWeight = FontWeight.Bold, color = Ink,
                                 modifier = Modifier.semantics { heading() })
                             Text(when (page) {
                                 1 -> "Revisa tus consultas y mensajes guardados."
                                 2 -> "Conexiones, avisos y privacidad."
+                                3 -> "Consumo, presupuesto y próxima recarga."
                                 else -> "Saldo y recursos de tu SIM Cubacel."
                             }, fontSize = 14.sp, lineHeight = 20.sp, color = Muted)
                         }
@@ -199,6 +202,23 @@ private val Navy = Color(0xFF35234F)
                             Text("${state.unreadableCount} lecturas no se pudieron abrir", fontWeight = FontWeight.Bold)
                             Text("Mostramos las lecturas legibles. Los registros afectados siguen cifrados y conservados; algunos valores pueden ser anteriores. Reintenta para comprobar si vuelven a estar disponibles.")
                             OutlinedButton(onClick = { model.retryStorage() }) { Text("Reintentar lectura") }
+                        }
+                    }
+                    if (page != 2 && update.release != null) item {
+                        WhiteCard {
+                            Text("Hay una nueva versión de SIMple", fontWeight = FontWeight.Bold)
+                            Text(update.message)
+                            Button(onClick = { page = 2 }) { Text("Ver actualización") }
+                        }
+                    }
+                    if (page == 0) state.displayLines.filter { it.active }.forEach { line ->
+                        val date = state.rechargeDates[line.subscription] ?: StatisticsPolicy.recharge(state.entries, line.subscription, now)
+                        if (date == StatisticsPolicy.date(now)) item {
+                            WhiteCard {
+                                Text("${line.label} · hoy es tu fecha de recarga", fontWeight = FontWeight.Bold)
+                                Text("Revisa tus recursos y confirma la disponibilidad antes de recargar.")
+                                TextButton(onClick = { model.select(line.subscription); page = 3 }) { Text("Ver presupuesto de esta SIM") }
+                            }
                         }
                     }
                     val entries = state.entries.filter { it.subscription == state.selected }
@@ -401,6 +421,8 @@ private val Navy = Color(0xFF35234F)
                         if (filtered.size > historyLimit) item {
                             OutlinedButton(onClick = { historyLimit += 25 }, modifier = Modifier.fillMaxWidth()) { Text("Cargar más") }
                         }
+                    } else if (page == 3) {
+                        item { Statistics(state, model, now, onReminders, onNotificationSettings, onRefreshAll) }
                     } else {
                         item {
                             WhiteCard {
@@ -441,6 +463,11 @@ private val Navy = Color(0xFF35234F)
                                 Text("Actualizar SIMple", fontWeight = FontWeight.Bold, fontSize = 18.sp)
                                 Text("Versión ${com.simple.mobile.BuildConfig.VERSION_NAME} (${com.simple.mobile.BuildConfig.VERSION_CODE})", color = Muted)
                                 Text("Consulta GitHub y descarga el APK usando Internet. Android te pedirá confirmar la instalación.", fontSize = 13.sp)
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text("Avisar de nuevas versiones al abrir", modifier = Modifier.weight(1f))
+                                    Switch(checked = automaticUpdates, onCheckedChange = { updates.setAutomatic(it) })
+                                }
+                                Text("Opcional: consulta GitHub como máximo una vez al día al abrir la app. No descarga ni instala automáticamente.", fontSize = 13.sp)
                                 Text(update.message, fontSize = 13.sp)
                                 if (update.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
                                 OutlinedButton(onClick = { updates.check() }, enabled = !update.busy) { Text("Buscar actualización") }

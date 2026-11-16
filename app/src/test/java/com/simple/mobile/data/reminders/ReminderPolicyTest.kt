@@ -7,6 +7,19 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class ReminderPolicyTest {
+    @Test fun personalRechargeDatesNotifyEachActiveSimOnceAtNineInCuba() {
+        val day = java.time.LocalDate.of(2026, 11, 16)
+        val zone = java.time.ZoneId.of("America/Havana")
+        val at = day.atTime(9, 0).atZone(zone).toInstant().toEpochMilli()
+        val events = ReminderPolicy.events(emptyList(), at, mapOf(1 to day, 2 to day.plusDays(1)))
+        val first = ReminderPolicy.plan(events, emptySet(), setOf(1, 2), at)
+        assertEquals(1, first.due.single().subscription)
+        assertTrue(ReminderPolicy.plan(events, setOf(first.due.single().key), setOf(1, 2), at).due.isEmpty())
+        assertTrue(ReminderPolicy.plan(events, emptySet(), setOf(2), at).due.isEmpty())
+        val midnight = day.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli()
+        assertTrue(ReminderPolicy.plan(events, emptySet(), setOf(1), midnight).due.isEmpty())
+    }
+
     private val now = 10 * ReminderPolicy.DAY
     private fun reading(query: CubacelQuery = CubacelQuery.BALANCE, at: Long = now, balance: String? = "10",
                         voice: Long? = null, sms: Long? = null, bundles: List<CarrierReading.Bundle> = emptyList(),

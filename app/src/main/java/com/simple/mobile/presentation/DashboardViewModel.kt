@@ -45,6 +45,8 @@ data class DashboardState(
     val recipients: List<Recipient> = emptyList(), val transfers: List<TransferRecord> = emptyList(),
     val transferReady: Boolean = false, val transferSaving: Boolean = false,
     val pickedContact: Pair<String, String>? = null, val refreshOffer: Int? = null,
+    val rechargeDates: Map<Int, java.time.LocalDate> = emptyMap(),
+    val mobileUsage: com.simple.mobile.data.statistics.MobileUsageState = com.simple.mobile.data.statistics.MobileUsageState(),
     val remindersEnabled: Boolean = false, val notificationsAllowed: Boolean = false
  ) {
     val displayLines: List<Line> get() = LineCatalog.visible(lines, (entries.map { it.subscription } + transfers.map { it.subscription }).toSet(), nicknames)
@@ -134,6 +136,29 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
         mutable.update { old -> old.copy(lines = lines, permission = permitted,
             selected = LineCatalog.selection(old.selected, LineCatalog.visible(lines, (old.entries.map { it.subscription } + old.transfers.map { it.subscription }).toSet(), old.nicknames))) }
     }
+    fun loadMobileUsage(days: Int = mutable.value.mobileUsage.days) {
+        if (days !in listOf(7, 30) || mutable.value.mobileUsage.loading) return
+        mutable.update { it.copy(mobileUsage = com.simple.mobile.data.statistics.MobileUsageState(loading = true, days = days)) }
+        viewModelScope.launch {
+            val result = withContext(kotlinx.coroutines.Dispatchers.IO) {
+                com.simple.mobile.data.statistics.MobileUsage(app).read(days, System.currentTimeMillis())
+            }
+            mutable.update { it.copy(mobileUsage = result) }
+        }
+    }
+    fun setRechargeDate(subscription: Int, date: java.time.LocalDate?) {
+        if (!mutable.value.storageReady || mutable.value.managingLine) return
+        mutable.update { it.copy(managingLine = true) }
+        worker.execute {
+            try {
+                store.setRechargeDate(subscription, date)
+                val dates = store.rechargeDates()
+                mutable.update { it.copy(rechargeDates = dates) }
+                app.reconcileReminders()
+            } catch (_: Exception) { notify("No se pudo guardar la fecha. Inténtalo de nuevo.") }
+            finally { mutable.update { it.copy(managingLine = false) } }
+        }
+    }
     fun select(subscription: Int) { mutable.update { it.copy(selected = subscription) } }
     fun dismissMessage() { mutable.update { it.copy(message = null) } }
     fun notify(text: String) { mutable.update { it.copy(message = text) } }
@@ -142,8 +167,9 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
             try {
                 val entries = store.history()
                 val names = store.nicknames()
+                val dates = store.rechargeDates()
                 app.publishReadings(entries)
-                if (!disposed) mutable.update { it.copy(entries = entries, unreadableCount = store.unreadableCount, nicknames = names, loading = false, storageReady = true) }
+                if (!disposed) mutable.update { it.copy(entries = entries, unreadableCount = store.unreadableCount, nicknames = names, rechargeDates = dates, loading = false, storageReady = true) }
             } catch (_: Exception) {
                 if (!disposed) mutable.update { it.copy(loading = false, storageReady = false,
                     message = "No se pudo abrir el historial cifrado. Tus datos no se han borrado. Puedes reintentar desde Ajustes.") }
@@ -264,7 +290,8 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
             try {
                 store.rename(subscription, nickname)
                 val names = store.nicknames()
-                if (!disposed) mutable.update { it.copy(nicknames = names, message = "Nombre de la línea guardado.") }
+                val dates = store.rechargeDates()
+                if (!disposed) mutable.update { it.copy(nicknames = names, rechargeDates = dates, message = "Nombre de la línea guardado.") }
             } catch (_: Exception) { if (!disposed) notify("No se pudo guardar el nombre de la línea.") }
             finally { if (!disposed) mutable.update { it.copy(managingLine = false) } }
         }
@@ -281,7 +308,8 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
                 app.smsImport.clearSummary()
                 app.refreshReadings()
                 val names = store.nicknames()
-                if (!disposed) mutable.update { it.copy(nicknames = names, storageReady = true,
+                val dates = store.rechargeDates()
+                if (!disposed) mutable.update { it.copy(nicknames = names, rechargeDates = dates, storageReady = true,
                     message = if (subscription == null) "Datos locales eliminados. Importación SMS desactivada."
                         else "Datos de esta línea eliminados. Las demás líneas se conservan. Importación SMS desactivada.") }
             } catch (_: Exception) { if (!disposed) notify("No se pudieron borrar los datos. Inténtalo de nuevo.") }

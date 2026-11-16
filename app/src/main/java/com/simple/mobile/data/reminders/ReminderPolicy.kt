@@ -20,12 +20,19 @@ internal object ReminderPolicy {
             retained, delivered - valid.map { it.key }.toSet())
     }
 
-    fun events(entries: List<Entry>, enabledAt: Long): List<Event> {
+    fun events(entries: List<Entry>, enabledAt: Long, rechargeDates: Map<Int, java.time.LocalDate> = emptyMap()): List<Event> {
         // Purchase/recharge receipts must not displace a measured balance.
         val latest = entries.filter { it.reading.query() != CubacelQuery.BALANCE || it.reading.balanceCup() != null }
             .groupBy { it.subscription to it.reading.query() }
             .mapValues { (_, values) -> values.maxBy { it.reading.receivedAt() }.reading }
         return buildList {
+            for ((sub, day) in rechargeDates) {
+                val zone = java.time.ZoneId.of("America/Havana")
+                val due = day.atTime(9, 0).atZone(zone).toInstant().toEpochMilli()
+                val until = day.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli()
+                add(Event("planned-recharge:$sub:$day", sub, due, until, "Hoy toca tu recarga",
+                    "Hoy es la fecha que elegiste para esta tarjeta. Revisa tus recursos y confirma las condiciones antes de recargar."))
+            }
             for ((identity, r) in latest) {
                 val (sub, query) = identity
                 val name = when (query) {
@@ -39,7 +46,7 @@ internal object ReminderPolicy {
                 val expiries = (listOfNotNull(r.expiresAt()) + r.bundles().mapNotNull { it.expiresAt() }).distinct()
                 for (expiry in expiries) add(Event("expiry:$sub:$query:$expiry", sub, expiry - DAY, expiry,
                     "$name: vencimiento próximo", "Una vigencia informada por el operador termina en menos de 24 horas. Abre SIMple para revisar la fecha."))
-                if (query == CubacelQuery.RECHARGE_STATUS) r.nextRechargeAt()?.let { date ->
+                if (query == CubacelQuery.RECHARGE_STATUS && sub !in rechargeDates) r.nextRechargeAt()?.let { date ->
                     add(Event("recharge:$sub:$date", sub, date, date + DAY, "Revisa tu cupo de recarga",
                         "Llegó la fecha indicada por el operador. Consulta de nuevo para confirmar tu cupo; la fecha no garantiza disponibilidad."))
                 }

@@ -21,9 +21,23 @@ data class UpdateState(val busy: Boolean = false, val message: String = "Busca n
 class AppUpdates(app: Application) : AndroidViewModel(app) {
     private val mutable = MutableStateFlow(UpdateState())
     val state = mutable.asStateFlow()
+    private val prefs = app.getSharedPreferences("update_preferences", android.content.Context.MODE_PRIVATE)
+    private val autoMutable = MutableStateFlow(prefs.getBoolean("automatic", false))
+    val automatic = autoMutable.asStateFlow()
+    fun setAutomatic(enabled: Boolean) {
+        prefs.edit().putBoolean("automatic", enabled).apply()
+        autoMutable.value = enabled
+        if (enabled) checkOnOpen()
+    }
+    fun checkOnOpen() {
+        val now = System.currentTimeMillis()
+        val last = prefs.getLong("last_attempt", 0)
+        if (autoMutable.value && !mutable.value.busy && (now < last || now - last >= 86_400_000L)) check()
+    }
     val apk: File get() = File(getApplication<Application>().cacheDir, "updates/update.apk")
     fun check() {
         if (mutable.value.busy) return
+        prefs.edit().putLong("last_attempt", System.currentTimeMillis()).apply()
         mutable.value = UpdateState(busy = true, message = "Buscando actualizaciones…")
         viewModelScope.launch {
             try {

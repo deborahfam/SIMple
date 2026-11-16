@@ -47,7 +47,7 @@ class LocalReminders(private val app: SimpleApplication) {
         })
         if (!allowed()) return
         val now = System.currentTimeMillis()
-        val candidates = ReminderPolicy.events(entries, prefs.getLong("enabled_at", now)).map { it.copy(key = digest(it.key)) }
+        val candidates = ReminderPolicy.events(entries, prefs.getLong("enabled_at", now), app.store.rechargeDates()).map { it.copy(key = digest(it.key)) }
         val previouslySent = prefs.getStringSet("delivered", emptySet()).orEmpty().toSet()
         val active = if (app.checkSelfPermission(Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED)
             SimRepository(app).activeSubscriptions().filter {
