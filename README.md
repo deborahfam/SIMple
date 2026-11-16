@@ -6,7 +6,7 @@ Kotlin + Jetpack Compose presentation, MVVM, native subscription-aware USSD and 
 ## Download and update
 
 Download the APK from [GitHub Releases](https://github.com/deborahfam/SIMple/releases/latest).
-For version 0.5.0, choose **SIMple-6.apk**, open it on Android, and confirm the update.
+For version 0.5.1, choose **SIMple-7.apk**, open it on Android, and confirm the update.
 Existing SIMple users can also use **Ajustes → Actualizar SIMple → Buscar actualización**.
 This build uses the same signing key as the existing locally installed builds, so Android can
 update the app in place while preserving saved readings and recipients. Do not uninstall first.
