@@ -69,6 +69,9 @@ private val Navy = Color(0xFF35234F)
     val now by produceState(System.currentTimeMillis()) {
         while (true) { value = System.currentTimeMillis(); kotlinx.coroutines.delay(30_000) }
     }
+    var historyTransfers by rememberSaveable { mutableStateOf(false) }
+    var selectedReading by remember { mutableStateOf<CarrierReading?>(null) }
+    LaunchedEffect(state.selected) { selectedReading = null }
     var historyCategory by rememberSaveable { mutableStateOf<String?>(null) }
     var historyDays by rememberSaveable { mutableIntStateOf(0) }
     var historyLimit by rememberSaveable { mutableIntStateOf(25) }
@@ -261,7 +264,7 @@ private val Navy = Color(0xFF35234F)
                                         Icon(Icons.Outlined.Refresh, "Actualizar solo el saldo", tint = Mint, modifier = Modifier.size(21.dp))
                                     }
                                 }
-                                Text(balance?.let { "${freshnessLabel(it.receivedAt(), now)} · ${stamp(it.receivedAt())}" } ?: when {
+                                Text(balance?.let { freshnessLabel(it.receivedAt(), now) } ?: when {
                                     !state.permission -> "Conecta tu SIM para consultar el saldo."
                                     selectedLine?.active == false -> "Línea guardada. Activa esta SIM para consultar."
                                     selectedLine != null && !selectedLine.cubacel -> "Las consultas están disponibles para SIM Cubacel."
@@ -285,7 +288,6 @@ private val Navy = Color(0xFF35234F)
                                     SimResource("Bonos", bonus?.let { "${it.bundles().size} bolsas" } ?: "—", Icons.Outlined.Redeem,
                                         enabled, bonus, now, state.isQuerying(CubacelQuery.BONUSES_AND_USD_PLANS)) { onQuery(CubacelQuery.BONUSES_AND_USD_PLANS) }
                                 }
-                                if (enabled) Text("Toca un recurso para actualizarlo", color = Color(0xFFDDCEED), fontSize = 12.sp)
                                 val bundleReadings = listOfNotNull(data, bonus)
                                 run {
                                     HorizontalDivider(color = Color.White.copy(alpha = 0.2f))
@@ -295,6 +297,8 @@ private val Navy = Color(0xFF35234F)
                                         Icon(if (showPackages) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore, null)
                                     }
                                     if (showPackages) {
+                                        Text("Toca un recurso para actualizarlo. La actualización rápida omite lecturas válidas de los últimos 15 minutos.", color = Mint, fontSize = 12.sp)
+                                        TextButton(onClick = onRefreshAll, enabled = enabled) { Text("Actualizar todo de nuevo", color = Mint) }
                                         listOf("Internet general" to data, "Minutos" to voice, "Mensajes" to sms, "Bonos" to bonus).forEach { (label, reading) ->
                                             Column(Modifier.padding(vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                                                 Text(label, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Medium)
@@ -323,10 +327,8 @@ private val Navy = Color(0xFF35234F)
                                     if (state.busy) CircularProgressIndicator(Modifier.size(19.dp), color = Color(0xFFD9CBE4), strokeWidth = 2.dp)
                                     else Icon(Icons.Outlined.Refresh, null, modifier = Modifier.size(19.dp))
                                     Spacer(Modifier.width(8.dp))
-                                    Text(if (state.busy) "Actualizando…" else "Actualizar lo necesario", fontWeight = FontWeight.Bold)
+                                    Text(if (state.busy) "Actualizando…" else "Actualizar", fontWeight = FontWeight.Bold)
                                 }
-                                Text("Omite lecturas válidas de los últimos 15 minutos.", color = Mint, fontSize = 12.sp)
-                                TextButton(onClick = onRefreshAll, enabled = enabled) { Text("Actualizar todo de nuevo", color = Mint) }
                                 val pending = state.pendingQueries[state.selected].orEmpty()
                                 if (pending.isNotEmpty() && !state.busy) OutlinedButton(onClick = onRetryQueries, enabled = enabled) {
                                     Text("Reintentar pendientes (${pending.size})", color = Mint)
@@ -361,87 +363,101 @@ private val Navy = Color(0xFF35234F)
                                 onQuery, onRefreshAll, { onRechargeDemo() }, { buyPlans = true })
                         }
                         item {
-                            UsageTrendsCard(DashboardInsights.trends(state.entries, state.selected, now),
-                                enabled, onRefreshAll, { page = 1 })
-                        }
-                        item {
                             RechargeAvailability(entries.firstOrNull { it.reading.query() == CubacelQuery.RECHARGE_STATUS }?.reading, enabled, now, state.isQuerying(CubacelQuery.RECHARGE_STATUS)) {
                                 onQuery(CubacelQuery.RECHARGE_STATUS)
                             }
                         }
-                        item {
-                            Surface(onClick = { page = 2 }, color = MaterialTheme.colorScheme.surface, shape = RoundedCornerShape(16.dp)) {
-                                Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Outlined.MarkEmailRead, null, tint = Teal, modifier = Modifier.size(20.dp))
-                                    Spacer(Modifier.width(10.dp))
-                                    Text(if (!state.smsStatus.enabled) "Conectar mensajes de Cubacel" else if (state.smsStatus.syncing) "Sincronizando mensajes…" else "Mensajes de Cubacel conectados", modifier = Modifier.weight(1f), fontSize = 13.sp)
-                                    Icon(Icons.Outlined.ChevronRight, "Configurar mensajes", tint = Muted)
-                                }
-                            }
-                        }
-                        val purchased = entries.firstOrNull { it.reading.purchase() != null }?.reading
-                        if (purchased != null) item {
-                            val plan = purchased.purchase()!!
-                            WhiteCard {
-                                SectionTitle("Último plan comprado", "Recibo del operador")
-                                Text(purchaseSummary(plan), fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                                Text("${plan.validityDays()} días${if (plan.startsOnFirstUse()) " desde el primer uso" else " de vigencia"}. Son recursos comprados, no una lectura del consumo restante.", color = Muted, fontSize = 12.sp)
-                                Text(stamp(purchased.receivedAt()), color = Muted, fontSize = 11.sp)
-                            }
-                        }
-                        item { PrivacyFooter() }
                     } else if (page == 1) {
-                        item { TransferHistory(state.transfers.filter { it.subscription == state.selected }, state.transferSaving || state.managingLine, model::transferResult) }
-                        val filtered = filteredHistory
                         item {
-                            WhiteCard {
-                                Text("Filtrar historial", fontWeight = FontWeight.Bold)
-                                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    item { FilterChip(selected = historyCategory == null, onClick = { historyCategory = null }, label = { Text("Todas") }) }
-                                    items(CubacelQuery.values().toList()) { query ->
-                                        FilterChip(selected = historyCategory == query.name, onClick = { historyCategory = query.name }, label = { Text(queryLabel(query)) })
+                            Row(Modifier.fillMaxWidth().selectableGroup(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                listOf("Lecturas", "Transferencias").forEachIndexed { index, label ->
+                                    val active = historyTransfers == (index == 1)
+                                    Surface(color = if (active) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surface,
+                                        shape = RoundedCornerShape(14.dp), modifier = Modifier.weight(1f)) {
+                                        Box(Modifier.selectable(selected = active, role = Role.Tab, onClick = { historyTransfers = index == 1 })
+                                            .heightIn(min = 48.dp).padding(12.dp), contentAlignment = Alignment.Center) {
+                                            Text(label, color = if (active) Teal else Muted, fontWeight = FontWeight.SemiBold)
+                                        }
                                     }
                                 }
-                                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    items(listOf(0, 1, 7, 30)) { days ->
-                                        FilterChip(selected = historyDays == days, onClick = { historyDays = days }, label = { Text(if (days == 0) "Todo" else if (days == 1) "24 horas" else "$days días") })
+                            }
+                        }
+                        if (historyTransfers) {
+                            item { TransferHistory(state.transfers.filter { it.subscription == state.selected }, state.transferSaving || state.managingLine, model::transferResult) }
+                        } else {
+                            val filtered = filteredHistory
+                            item {
+                                WhiteCard {
+                                    DetailDisclosure("Filtrar · ${historyCategory?.let { queryLabel(CubacelQuery.valueOf(it)) } ?: "Todas"} · ${if (historyDays == 0) "Todo el período" else if (historyDays == 1) "24 horas" else "$historyDays días"}") {
+                                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            item { FilterChip(selected = historyCategory == null, onClick = { historyCategory = null }, label = { Text("Todas") }) }
+                                            items(CubacelQuery.values().toList()) { query ->
+                                                FilterChip(selected = historyCategory == query.name, onClick = { historyCategory = query.name }, label = { Text(queryLabel(query)) })
+                                            }
+                                        }
+                                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            items(listOf(0, 1, 7, 30)) { days ->
+                                                FilterChip(selected = historyDays == days, onClick = { historyDays = days }, label = { Text(if (days == 0) "Todo" else if (days == 1) "24 horas" else "$days días") })
+                                            }
+                                        }
+                                    }
+                                    Text("${filtered.size} lecturas", fontSize = 12.sp, color = Muted)
+                                }
+                            }
+                            if (entries.isNotEmpty() && filtered.isEmpty()) item {
+                                WhiteCard {
+                                    Icon(Icons.Outlined.SearchOff, null, tint = Teal, modifier = Modifier.size(32.dp))
+                                    Text("No hay resultados", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                                    Text("Prueba otra categoría o amplía el período.", color = Muted)
+                                    TextButton(onClick = { historyCategory = null; historyDays = 0 }) { Text("Mostrar todas las lecturas") }
+                                }
+                            }
+                            if (state.loading) item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
+                            if (entries.isEmpty()) item {
+                                WhiteCard {
+                                    Icon(Icons.Outlined.History, null, tint = Teal, modifier = Modifier.size(32.dp))
+                                    Text("Tu primera lectura empieza aquí", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                                    Text("Al consultar tu línea, las lecturas se guardan aquí automáticamente.", color = Muted, fontSize = 14.sp)
+                                    Button(onClick = { page = 0 }) { Text("Ir a mi línea") }
+                                }
+                            }
+                            filtered.take(historyLimit).groupBy { historyDate(it.reading.receivedAt()) }.forEach { (date, records) ->
+                                item {
+                                    Text(date, style = MaterialTheme.typography.labelLarge, color = Muted,
+                                        modifier = Modifier.padding(top = 4.dp).semantics { heading() })
+                                }
+                                items(records) { entry ->
+                                    val reading = entry.reading
+                                    Surface(onClick = { selectedReading = reading }, shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surface) {
+                                        Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                            Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = CircleShape) {
+                                                Box(Modifier.size(40.dp), contentAlignment = Alignment.Center) {
+                                                    Icon(readingIcon(reading.query()), null, tint = Teal, modifier = Modifier.size(20.dp))
+                                                }
+                                            }
+                                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                                Text(readingTitle(reading), style = MaterialTheme.typography.labelLarge, color = Muted)
+                                                Text(readingSummary(reading), style = MaterialTheme.typography.titleMedium,
+                                                    maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                                                Text(SimpleDateFormat("HH:mm", Locale.forLanguageTag("es")).format(Date(reading.receivedAt())),
+                                                    style = MaterialTheme.typography.bodySmall, color = Muted)
+                                            }
+                                            Icon(Icons.Outlined.ChevronRight, "Ver detalle", tint = Muted, modifier = Modifier.size(20.dp))
+                                        }
                                     }
                                 }
-                                Text("${minOf(historyLimit, filtered.size)} de ${filtered.size} lecturas · hasta 300 guardadas entre todas las líneas", fontSize = 12.sp, color = Muted)
                             }
-                        }
-                        if (entries.isNotEmpty() && filtered.isEmpty()) item {
-                            WhiteCard {
-                                Icon(Icons.Outlined.SearchOff, null, tint = Teal, modifier = Modifier.size(32.dp))
-                                Text("No hay resultados", fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                                Text("Prueba otra categoría o amplía el período.", color = Muted)
-                                TextButton(onClick = { historyCategory = null; historyDays = 0 }) { Text("Mostrar todas las lecturas") }
+                            if (filtered.size > historyLimit) item {
+                                OutlinedButton(onClick = { historyLimit += 25 }, modifier = Modifier.fillMaxWidth()) { Text("Cargar más") }
                             }
-                        }
-                        if (state.loading) item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
-                        if (entries.isEmpty()) item {
-                            WhiteCard {
-                                Icon(Icons.Outlined.History, null, tint = Teal, modifier = Modifier.size(32.dp))
-                                Text("Tu primera lectura empieza aquí", fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                                Text("Al consultar tu línea, las lecturas se guardan aquí automáticamente.", color = Muted, fontSize = 14.sp)
-                                Button(onClick = { page = 0 }) { Text("Ir a mi línea") }
-                            }
-                        }
-                        items(filtered.take(historyLimit)) { entry ->
-                            val reading = entry.reading
-                            WhiteCard {
-                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                    Text(queryLabel(reading.query()), fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                                    Icon(Icons.Outlined.Verified, "Guardado automáticamente", tint = Teal, modifier = Modifier.size(19.dp))
-                                }
-                                Text(readingSummary(reading), fontSize = 18.sp, fontWeight = FontWeight.Medium)
-                                Text("${reading.source()} · ${stamp(reading.receivedAt())}", fontSize = 12.sp, color = Muted)
-                            }
-                        }
-                        if (filtered.size > historyLimit) item {
-                            OutlinedButton(onClick = { historyLimit += 25 }, modifier = Modifier.fillMaxWidth()) { Text("Cargar más") }
                         }
                     } else if (page == 3) {
+                        item {
+                            UsageTrendsCard(DashboardInsights.trends(state.entries, state.selected, now),
+                                !state.busy && !state.managingLine && state.storageReady && state.lines.any { it.subscription == state.selected && it.cubacel },
+                                onRefreshAll, { page = 1; historyTransfers = false })
+                        }
                         item { Statistics(state, model, now, onReminders, onNotificationSettings, onRefreshAll) }
                     } else {
                         item {
@@ -507,6 +523,25 @@ private val Navy = Color(0xFF35234F)
                     }
                 }
             }
+        }
+        selectedReading?.let { reading ->
+            AlertDialog(onDismissRequest = { selectedReading = null }, title = { Text(readingTitle(reading)) },
+                text = {
+                    Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text(readingSummary(reading), style = MaterialTheme.typography.titleLarge)
+                        Text(SimpleDateFormat("d MMM yyyy · HH:mm", Locale.forLanguageTag("es")).format(Date(reading.receivedAt())), color = Muted)
+                        Text("Origen: ${reading.source()}", style = MaterialTheme.typography.bodySmall)
+                        reading.expiresAt()?.let { Text(expirationLabel(it, now)) }
+                        reading.bundles().forEach { bundle ->
+                            bundle.expiresAt()?.let { Text("${bundleLabel(bundle.kind())}: ${expirationLabel(it, now)}") }
+                        }
+                        reading.purchase()?.let { purchase ->
+                            Text("${purchase.validityDays()} días${if (purchase.startsOnFirstUse()) " desde el primer uso" else " de vigencia"}. Recursos comprados, no saldo restante.")
+                        }
+                        Text("Lectura guardada en ese momento; no representa necesariamente tus recursos actuales.",
+                            style = MaterialTheme.typography.bodySmall, color = Muted)
+                    }
+                }, confirmButton = { TextButton(onClick = { selectedReading = null }) { Text("Cerrar") } })
         }
         if (transfer) TransferPanel(state, model, onPickContact, onTransfer) { transfer = false }
         if (buyPlans) com.simple.mobile.presentation.plans.PlanPurchaseScreen(state, model,
@@ -656,6 +691,20 @@ private fun number(value: BigDecimal) = value.stripTrailingZeros().toPlainString
 private fun gb(bytes: Long?) = bytes?.let { number(BigDecimal(it).divide(BigDecimal(1_000_000_000), 3, java.math.RoundingMode.DOWN)) } ?: "—"
 private fun bundleLabel(kind: String) = when(kind) { "general" -> "Internet · todas las redes"; "national" -> "Navegación nacional"; "lte" -> "Solo LTE / 4G"; "night" -> "Navegación nocturna"; "mail" -> "Correo nauta"; "todus" -> "toDus"; "whatsapp" -> "WhatsApp"; "facebook" -> "Facebook"; else -> "Datos" }
 private fun queryLabel(query: CubacelQuery) = when(query) { CubacelQuery.BALANCE -> "Saldo principal"; CubacelQuery.DATA -> "Datos móviles"; CubacelQuery.VOICE -> "Minutos"; CubacelQuery.SMS -> "Mensajes"; CubacelQuery.BONUSES_AND_USD_PLANS -> "Bonos y planes USD"; CubacelQuery.RECHARGE_STATUS -> "Recargas nacionales" }
+private fun historyDate(at: Long) = SimpleDateFormat("d 'de' MMMM yyyy", Locale.forLanguageTag("es")).format(Date(at))
+private fun readingTitle(reading: CarrierReading) = when {
+    reading.purchase() != null -> "Plan comprado"
+    reading.receivedRechargeCup() != null -> "Recarga recibida"
+    else -> queryLabel(reading.query())
+}
+private fun readingIcon(query: CubacelQuery) = when (query) {
+    CubacelQuery.BALANCE -> Icons.Outlined.AccountBalanceWallet
+    CubacelQuery.DATA -> Icons.Outlined.DataUsage
+    CubacelQuery.VOICE -> Icons.Outlined.Call
+    CubacelQuery.SMS -> Icons.Outlined.Sms
+    CubacelQuery.BONUSES_AND_USD_PLANS -> Icons.Outlined.Redeem
+    CubacelQuery.RECHARGE_STATUS -> Icons.Outlined.AddCard
+}
 private fun readingSummary(r: CarrierReading): String = when(r.query()) {
     CubacelQuery.BALANCE -> r.balanceCup()?.let { "$it CUP" } ?: r.purchase()?.let { "Plan comprado: ${purchaseSummary(it)}" } ?: "Recarga recibida: ${r.receivedRechargeCup()} CUP"
     CubacelQuery.VOICE -> "${r.voiceSeconds()?.div(60)} min"

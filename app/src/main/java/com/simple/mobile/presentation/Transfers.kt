@@ -170,11 +170,18 @@ import com.simple.mobile.domain.transfer.*
         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("Transferencias de esta línea", style = MaterialTheme.typography.titleLarge)
             Text("Registro local · no es un comprobante del operador", style = MaterialTheme.typography.bodySmall)
-            if (records.isEmpty()) Text("Las transferencias que prepares aparecerán aquí.")
+            if (records.isEmpty()) {
+                Icon(Icons.Outlined.SwapHoriz, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(32.dp))
+                Text("Todavía no hay transferencias", style = MaterialTheme.typography.titleMedium)
+                Text("Las que prepares desde Inicio aparecerán aquí.", style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
             (if (expanded) records else records.take(3)).forEach { record ->
                 HorizontalDivider()
-                Text("${record.name.ifBlank { "Destinatario" }} · +53 ${record.phone}", fontWeight = FontWeight.Bold)
-                Text("${record.amount} CUP · ${java.text.SimpleDateFormat("d MMM · HH:mm", java.util.Locale.forLanguageTag("es")).format(java.util.Date(record.at))}")
+                Text("${record.amount} CUP", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+                Text("Para ${record.name.ifBlank { "+53 ${record.phone}" }}", style = MaterialTheme.typography.bodyMedium)
+                Text(java.text.SimpleDateFormat("d MMM yyyy · HH:mm", java.util.Locale.forLanguageTag("es")).format(java.util.Date(record.at)),
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text(when (record.status) {
                     "PREPARED" -> "Preparada · apertura no verificada"
                     "OPENED" -> "Menú abierto · resultado sin confirmar"
@@ -182,10 +189,15 @@ import com.simple.mobile.domain.transfer.*
                     "NOT_COMPLETED" -> "No realizada según tu confirmación"
                     else -> "No se pudo abrir el menú"
                 }, color = MaterialTheme.colorScheme.primary)
-                if (record.status in setOf("OPENED", "USER_CONFIRMED", "NOT_COMPLETED")) {
-                    Row {
-                        TextButton(onClick = { marking = record to true }, enabled = !saving) { Text("La realicé") }
-                        TextButton(onClick = { marking = record to false }, enabled = !saving) { Text("No realizada") }
+                key(record.id) {
+                    DetailDisclosure("Detalles y confirmación") {
+                        Text("Número: +53 ${record.phone}")
+                        if (record.status in setOf("OPENED", "USER_CONFIRMED", "NOT_COMPLETED")) {
+                            Row {
+                                TextButton(onClick = { marking = record to true }, enabled = !saving) { Text("La realicé") }
+                                TextButton(onClick = { marking = record to false }, enabled = !saving) { Text("No realizada") }
+                            }
+                        }
                     }
                 }
             }
