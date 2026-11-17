@@ -7,6 +7,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -23,14 +25,20 @@ import com.simple.mobile.domain.recharge.RechargeSimulation as Demo
     var cup by remember { mutableStateOf("") }
     var pin by remember(state.attempt?.id, state.attempt?.phase) { mutableStateOf("") }
     val a = state.attempt
+    val step = when (a?.phase) {
+        null -> 0
+        Demo.Phase.REVIEW, Demo.Phase.AUTH_PENDING -> 1
+        else -> 2
+    }
     AlertDialog(onDismissRequest = model::close,
         properties = DialogProperties(securePolicy = SecureFlagPolicy.SecureOn),
         title = { Text("Recarga de prueba") },
         text = {
             Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                RechargeSteps(step)
                 Text("SIMULACIÓN · No mueve dinero", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
                 Text("No conecta con Transfermóvil ni con un banco. No envía USSD ni SMS. Usa solamente el PIN ficticio 1234.")
-                Text("Línea: ${a?.line ?: state.line}")
+                if (a == null) Text("Línea: ${state.line}", style = MaterialTheme.typography.bodySmall)
                 if (a == null) {
                     Text("Banco de prueba")
                     Demo.Bank.entries.forEach { choice ->
@@ -38,10 +46,17 @@ import com.simple.mobile.domain.recharge.RechargeSimulation as Demo
                     }
                     OutlinedTextField(phone, { phone = it.filter(Char::isDigit).take(8) }, label = { Text("Número ficticio") }, modifier = Modifier.fillMaxWidth(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone), singleLine = true)
                     OutlinedTextField(cup, { cup = it.take(12) }, label = { Text("Importe de prueba · CUP") }, modifier = Modifier.fillMaxWidth(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), singleLine = true)
-                    Button(onClick = { model.prepare(bank, phone, cup) }, enabled = !state.busy && state.subscription >= 0 && Demo.amount(cup) != null && Regex("5[0-9]{7}").matches(phone)) { Text("Revisar prueba") }
+                    Button(onClick = { model.prepare(bank, phone, cup) }, modifier = Modifier.fillMaxWidth(), enabled = !state.busy && state.subscription >= 0 && Demo.amount(cup) != null && Regex("5[0-9]{7}").matches(phone)) { Text("Continuar a revisión") }
                     if (state.subscription < 0) Text("Selecciona una SIM para iniciar la prueba.")
                 } else {
-                    Text("${a.bank.label} · ${a.phone}\n${a.cup} CUP", style = MaterialTheme.typography.titleMedium)
+                    Surface(color = MaterialTheme.colorScheme.surfaceVariant, shape = MaterialTheme.shapes.medium) {
+                        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("${a.cup} CUP", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+                            RechargeSummaryRow("Móvil ficticio", a.phone)
+                            RechargeSummaryRow("Banco de prueba", a.bank.label)
+                            RechargeSummaryRow("Línea", a.line)
+                        }
+                    }
                     Text(when (a.phase) {
                         Demo.Phase.REVIEW -> "Revisa la línea, el número ficticio y el importe."
                         Demo.Phase.AUTH_PENDING -> "Esperando autenticación simulada. Elige una respuesta abajo."
@@ -55,7 +70,7 @@ import com.simple.mobile.domain.recharge.RechargeSimulation as Demo
                     Text("Solicitudes reales: 0 · Envíos simulados: ${a.simulatedSends}")
                     if (a.phase == Demo.Phase.REVIEW) {
                         OutlinedTextField(pin, { pin = it.filter(Char::isDigit).take(4) }, label = { Text("PIN ficticio: 1234") }, visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword), singleLine = true, modifier = Modifier.fillMaxWidth())
-                        Button(onClick = { val value = pin; pin = ""; model.authenticate(value) }, enabled = !state.busy && pin.length == 4) { Text("Autenticar prueba") }
+                        Button(onClick = { val value = pin; pin = ""; model.authenticate(value) }, modifier = Modifier.fillMaxWidth(), enabled = !state.busy && pin.length == 4) { Text("Confirmar prueba con PIN") }
                         if (state.savedPin) {
                             OutlinedButton(onClick = { pin = ""; onPin(false, a.id) }, enabled = !state.busy) { Text("Usar PIN ficticio guardado") }
                         } else {
@@ -76,7 +91,10 @@ import com.simple.mobile.domain.recharge.RechargeSimulation as Demo
                         Text("Mensaje ficticio: ${Demo.SENDER}\nReferencia: ${a.resultReference}")
                         DemoAction("Repetir confirmación (duplicada)", state.busy) { model.message(Demo.Kind.RECHARGE_OK) }
                     }
-                    DemoAction("Nueva prueba", state.busy, model::reset)
+                    DemoAction(if (a.phase == Demo.Phase.REVIEW) "Volver a los datos" else "Nueva prueba", state.busy) {
+                        if (a.phase == Demo.Phase.REVIEW) { bank = a.bank; phone = a.phone; cup = a.cup }
+                        model.reset()
+                    }
                 }
                 if (state.savedPin) DemoAction("Olvidar PIN ficticio", state.busy, model::forgetPin)
                 state.error?.let {
@@ -91,4 +109,31 @@ import com.simple.mobile.domain.recharge.RechargeSimulation as Demo
 
 @Composable private fun DemoAction(label: String, busy: Boolean, action: () -> Unit) {
     OutlinedButton(onClick = action, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text(label) }
+}
+
+@Composable private fun RechargeSteps(current: Int) {
+    val labels = listOf("Datos", "Revisar", "Resultado")
+    Column(Modifier.fillMaxWidth().semantics(mergeDescendants = true) {
+        contentDescription = "Paso ${current + 1} de 3: ${labels[current]}"
+        liveRegion = LiveRegionMode.Polite
+    }, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            labels.forEachIndexed { index, label ->
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    HorizontalDivider(thickness = if (index == current) 3.dp else 1.dp,
+                        color = if (index == current) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant)
+                    Text("${index + 1}. $label", style = MaterialTheme.typography.labelMedium,
+                        fontWeight = if (index == current) FontWeight.Bold else FontWeight.Normal,
+                        color = if (index == current) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+    }
+}
+
+@Composable private fun RechargeSummaryRow(label: String, value: String) {
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(value, style = MaterialTheme.typography.bodyLarge)
+    }
 }

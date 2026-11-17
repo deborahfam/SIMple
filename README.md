@@ -226,11 +226,11 @@ this app to install packages: [Android package installation permission](https://
 
 ## Compact dashboard (0.5.0)
 
-Home groups the selected SIM’s balance and four compact resource rows in one card.
-Resource rows align labels and remaining amounts, with expiry (or reading age when expiry is unknown) below. Tap a row to refresh that resource; its icon becomes a loading indicator. Narrow layouts and large fonts stack the label and amount. Exact timestamps and package breakdowns are available under **Ver detalles**. Refresh all lives inside the
+Home groups the selected SIM’s balance and four compact resource rows in one card. Bottom navigation uses 12sp labels, consistent 24dp icons and a small selected-tab marker; large text or very narrow screens allow horizontal scrolling instead of compressing the labels.
+Resource rows align labels and remaining amounts, with expiry (or reading age when expiry is unknown) below. Tap a row to refresh that resource; its icon becomes a loading indicator. Narrow layouts and large fonts stack the label and amount. Exact timestamps and package breakdowns are available under **Paquetes y lecturas**. Refresh all lives inside the
 balance card; the smaller refresh icon queries only balance. Line renaming and deletion are in
 Settings. SMS connection is summarized on Home with a link to Settings, and package breakdowns
-expand on demand. Query progress, expiry warnings and damaged-reading notices remain visible.
+expand on demand. Bank notices live under **Avisos bancarios**, with the latest rejection and storage errors visible in the summary. Reminder rules, privacy details and advanced SMS import controls use collapsed sections in Settings. Query progress, expiry warnings and damaged-reading notices remain visible.
 
 ## Saved recipients and balance transfers
 
@@ -309,7 +309,7 @@ notification service.
 
 **Recargar → Probar recarga dentro de SIMple** opens an in-app, scrollable dialog tied to the
 selected SIM. Choose a simulated bank, fictitious mobile number and positive CUP amount, review,
-and authenticate with the demo PIN **1234**. Explicit buttons inject synthetic authentication,
+and authenticate with the demo PIN **1234**. The **Datos → Revisar → Resultado** indicator highlights the current step; review groups the amount, fictitious mobile, bank and SIM before confirmation. **Volver a los datos** preserves the reviewed fields for editing. Explicit buttons inject synthetic authentication,
 recharge confirmation/rejection, duplicate confirmation and timeout events. Every screen labels
 this as a simulation; the real request count is always zero. No bank account or real PIN is needed.
 

@@ -8,11 +8,30 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.simple.mobile.presentation.DashboardState
+import com.simple.mobile.presentation.DetailDisclosure
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
 @Composable fun BankRechargeNotices(state: DashboardState, onEnabled: (Boolean) -> Unit, onSync: () -> Unit) {
+    val notices = state.bankNotices.filter { it.receivingSubscription == state.selected }
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(if (state.smsStatus.bankEnabled) "Lectura de avisos bancarios activada" else "Lectura de avisos bancarios desactivada",
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        notices.firstOrNull()?.let {
+            Text("Último aviso: rechazo por límite de recarga · ${it.destination}",
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+        }
+        if (state.bankNoticeError) Text("No se pudieron abrir los avisos guardados. Reabre la app para reintentarlo.", color = MaterialTheme.colorScheme.error)
+        key(state.selected) {
+            DetailDisclosure("Avisos bancarios${if (notices.isNotEmpty()) " (${notices.size})" else ""}") {
+                BankRechargeNoticeDetails(state, onEnabled, onSync)
+            }
+        }
+    }
+}
+
+@Composable private fun BankRechargeNoticeDetails(state: DashboardState, onEnabled: (Boolean) -> Unit, onSync: () -> Unit) {
     var showOlder by remember(state.selected) { mutableStateOf(false) }
     val status = state.smsStatus
     val notices = state.bankNotices.filter { it.receivingSubscription == state.selected }
@@ -33,7 +52,6 @@ import java.time.format.DateTimeFormatter
             }
             status.error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
         }
-        if (state.bankNoticeError) Text("No se pudieron abrir los avisos guardados. Reabre la app para reintentarlo.", color = MaterialTheme.colorScheme.error)
         if (notices.isEmpty()) Text("Sin rechazos reconocidos para los SMS recibidos en esta SIM. La ausencia de un SMS no confirma éxito ni fallo.", style = MaterialTheme.typography.bodySmall)
         val date = DateTimeFormatter.ofPattern("dd-MM-yyyy")
         val timestamp = DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm").withZone(ZoneId.systemDefault())

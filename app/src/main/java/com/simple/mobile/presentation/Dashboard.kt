@@ -3,6 +3,8 @@
 package com.simple.mobile.presentation
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -35,6 +37,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -91,18 +94,24 @@ private val Navy = Color(0xFF35234F)
         onSurface = Ink, onBackground = Ink)) {
         Scaffold(containerColor = Paper, snackbarHost = { SnackbarHost(snackbar) }, bottomBar = {
             Box(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 16.dp, vertical = 10.dp), contentAlignment = Alignment.Center) {
-                Surface(Modifier.widthIn(max = 600.dp).fillMaxWidth(), shape = RoundedCornerShape(32.dp), color = MaterialTheme.colorScheme.surface) {
-                    Row(Modifier.padding(6.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                Surface(Modifier.widthIn(max = 600.dp).fillMaxWidth(), shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surface) {
+                    val scrollTabs = LocalDensity.current.fontScale > 1.3f || LocalConfiguration.current.screenWidthDp < 320
+                    Row(Modifier.selectableGroup().then(if (scrollTabs) Modifier.horizontalScroll(rememberScrollState()) else Modifier)
+                        .padding(horizontal = 4.dp, vertical = 6.dp)) {
                         listOf("Inicio" to Icons.Outlined.SpaceDashboard, "Historial" to Icons.Outlined.History,
                             "Ajustes" to Icons.Outlined.Tune, "Estadísticas" to Icons.Outlined.BarChart).forEachIndexed { index, item ->
                             val active = page == index
-                            Column(Modifier.weight(1f).clip(RoundedCornerShape(26.dp))
-                                .background(if (active) Mint else Color.Transparent)
+                            Column((if (scrollTabs) Modifier.width((100 * LocalDensity.current.fontScale).dp) else Modifier.weight(1f))
+                                .clip(RoundedCornerShape(12.dp))
                                 .selectable(selected = active, role = Role.Tab, onClick = { page = index })
-                                .heightIn(min = 56.dp).padding(vertical = 8.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                                Icon(item.second, null, tint = if (active) Navy else Muted, modifier = Modifier.size(22.dp))
-                                Text(item.first, color = if (active) Navy else Muted, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                                .heightIn(min = 64.dp).padding(horizontal = 2.dp, vertical = 6.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Box(Modifier.width(20.dp).height(3.dp).clip(CircleShape)
+                                    .background(if (active) Teal else Color.Transparent))
+                                Icon(item.second, null, tint = if (active) Teal else Muted, modifier = Modifier.size(24.dp))
+                                Text(item.first, color = if (active) Teal else Muted, fontSize = 12.sp,
+                                    fontWeight = if (active) FontWeight.Bold else FontWeight.Medium,
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                             }
                         }
                     }
@@ -281,9 +290,9 @@ private val Navy = Color(0xFF35234F)
                                 val bundleReadings = listOfNotNull(data, bonus)
                                 run {
                                     HorizontalDivider(color = Color.White.copy(alpha = 0.2f))
-                                    TextButton(onClick = { showPackages = !showPackages }, modifier = Modifier.fillMaxWidth(),
+                                    TextButton(onClick = { showPackages = !showPackages }, modifier = Modifier.fillMaxWidth().semantics { stateDescription = if (showPackages) "Expandido" else "Contraído" },
                                         colors = ButtonDefaults.textButtonColors(contentColor = Mint)) {
-                                        Text(if (showPackages) "Ocultar detalles" else "Ver detalles", modifier = Modifier.weight(1f))
+                                        Text("Paquetes y lecturas", modifier = Modifier.weight(1f))
                                         Icon(if (showPackages) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore, null)
                                     }
                                     if (showPackages) {
@@ -454,8 +463,10 @@ private val Navy = Color(0xFF35234F)
                                         modifier = Modifier.semantics { contentDescription = "Activar recordatorios locales" })
                                 }
                                 Text("Avisos 24 horas antes de un vencimiento conocido y al llegar la fecha de recarga. Consulta de nuevo para confirmar tu cupo.", color = Muted, fontSize = 13.sp)
-                                Text("Recursos bajos: saldo ≤ 20 CUP, Internet general ≤ 100 MB, minutos ≤ 5 o SMS ≤ 5. Solo con nuevas lecturas; no repetimos el aviso hasta que el recurso se recupere.", color = Muted, fontSize = 13.sp)
-                                Text("Sin consultas automáticas. Android puede retrasar los avisos. Las compras sin fecha de inicio confirmada no generan vencimientos estimados.", color = Muted, fontSize = 12.sp)
+                                DetailDisclosure("Cuándo se envían los avisos") {
+                                    Text("Recursos bajos: saldo ≤ 20 CUP, Internet general ≤ 100 MB, minutos ≤ 5 o SMS ≤ 5. Solo con nuevas lecturas; no repetimos el aviso hasta que el recurso se recupere.", color = Muted, fontSize = 13.sp)
+                                    Text("Sin consultas automáticas. Android puede retrasar los avisos. Las compras sin fecha de inicio confirmada no generan vencimientos estimados.", color = Muted, fontSize = 12.sp)
+                                }
                                 if (state.remindersEnabled && !state.notificationsAllowed)
                                     Text("Android tiene bloqueadas las notificaciones. Habilítalas para recibir los recordatorios.", color = MaterialTheme.colorScheme.error, fontSize = 13.sp)
                                 SettingsRow("Notificaciones en Android", Icons.Outlined.Notifications, onNotificationSettings)
@@ -464,7 +475,10 @@ private val Navy = Color(0xFF35234F)
                         item {
                             WhiteCard {
                                 Text("Privacidad, desde el inicio", fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                                Text("Las respuestas USSD se procesan en este teléfono. Solo guardamos los valores reconocidos, cifrados con una clave del dispositivo. Sin cuentas, sin anuncios y sin telemetría.", color = Muted, fontSize = 13.sp)
+                                Text("Datos cifrados en este dispositivo. Sin cuentas ni telemetría.", color = Muted, fontSize = 13.sp)
+                                DetailDisclosure("Cómo protegemos tus datos") {
+                                    Text("Las respuestas USSD se procesan en este teléfono. Solo guardamos los valores reconocidos, cifrados con una clave del dispositivo. Sin cuentas, sin anuncios y sin telemetría.", color = Muted, fontSize = 13.sp)
+                                }
                                 SettingsRow("Reintentar almacenamiento", Icons.Outlined.Refresh) { model.retryStorage() }
                                 SettingsRow("Eliminar datos de todas las líneas", Icons.Outlined.DeleteOutline) { deleteSubscription = null; deleteLabel = "todas las líneas"; delete = true }
                                 Text("La SIM y el historial se asocian al registro local de Android. Si sustituyes una tarjeta, elimina su historial para evitar mezclar lecturas.", fontSize = 11.sp, color = Muted)
@@ -707,8 +721,10 @@ private fun expirationLabel(at: Long, now: Long) =
             TextButton(onClick = onPermissions) { Text("Revisar permisos en Android") }
         }
         if (status.moreInbox) Text("Quedan mensajes nuevos por revisar. Sincroniza de nuevo para continuar.", fontSize = 13.sp)
-        Text("La primera revisión incluye hasta 150 SMS del operador y, si lo activas en Recargar, de PAGOxMOVIL. Después se revisan solo los nuevos.", color = Muted, fontSize = 12.sp)
-        TextButton(onClick = onRescan, enabled = status.enabled && permissionsReady && !status.syncing && !state.managingLine) { Text("Revisar últimos 150 mensajes") }
+        DetailDisclosure("Detalles de importación") {
+            Text("La primera revisión incluye hasta 150 SMS del operador y, si lo activas en Recargar, de PAGOxMOVIL. Después se revisan solo los nuevos.", color = Muted, fontSize = 12.sp)
+            TextButton(onClick = onRescan, enabled = status.enabled && permissionsReady && !status.syncing && !state.managingLine) { Text("Revisar últimos 150 mensajes") }
+        }
         OutlinedButton(onClick = onSync,
             enabled = status.enabled && state.permission && state.smsReadAllowed && !status.syncing && !state.managingLine,
             modifier = Modifier.fillMaxWidth()) { Text(if (status.syncing) "Sincronizando…" else "Sincronizar ahora") }
