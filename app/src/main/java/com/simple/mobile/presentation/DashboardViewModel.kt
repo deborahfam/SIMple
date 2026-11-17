@@ -110,7 +110,7 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
     }
     fun startTransfer(draft: TransferDraft, launch: (TransferDraft) -> Boolean) {
         val state = mutable.value
-        if (!state.transferReady || state.transferSaving || state.managingLine || state.busy) return
+        if (!state.transferReady || state.transferSaving || state.managingLine || state.busy || app.purchases.state.value.busy) return
         if (state.lines.none { it.subscription == draft.subscription && it.cubacel && it.active }) {
             notify("Selecciona una SIM Cubacel activa para continuar."); return
         }
@@ -219,6 +219,16 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
             }
         }
     }
+    val purchases get() = app.purchases
+    fun purchasePlan(planId: String, subscription: Int) {
+        val current = mutable.value
+        if (current.busy || current.managingLine || current.transferSaving || !current.storageReady) return
+        refreshLines()
+        if (mutable.value.lines.none { it.subscription == subscription && it.active && it.cubacel }) {
+            notify("La SIM elegida ya no está disponible. Vuelve a elegir la línea."); return
+        }
+        app.purchases.confirm(planId, subscription)
+    }
     fun check(query: CubacelQuery) = startQueries(listOf(query))
     fun refreshAll() = startQueries(RefreshSequence.ALL)
     fun refreshNeeded() = startQueries(RefreshPolicy.needed(mutable.value.entries, mutable.value.selected, System.currentTimeMillis()))
@@ -227,7 +237,7 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
 
     private fun startQueries(queries: List<CubacelQuery>) {
         val now = mutable.value
-        if (now.busy || now.managingLine) return
+        if (now.busy || now.managingLine || app.purchases.state.value.busy) return
         if (queries.isEmpty()) { notify("No hay consultas pendientes. Las lecturas tienen menos de 15 minutos; puedes forzar Actualizar todo."); return }
         if (!now.storageReady) { notify("El almacenamiento no está disponible. Reintenta desde Ajustes antes de consultar."); return }
         val line = now.lines.firstOrNull { it.subscription == now.selected }
@@ -310,11 +320,12 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
     fun clearHistory(subscription: Int? = null) {
-        if (mutable.value.busy || mutable.value.managingLine || mutable.value.transferSaving) { notify("Espera a que termine la consulta antes de borrar datos."); return }
+        if (mutable.value.busy || mutable.value.managingLine || mutable.value.transferSaving || app.purchases.state.value.busy) { notify("Espera a que termine la consulta antes de borrar datos."); return }
         mutable.update { it.copy(managingLine = true) }
         app.smsImport.setEnabled(false)
         worker.execute {
             try {
+                app.purchases.clearForLine(subscription)
                 app.bankNoticeStore.clear(subscription)
                 app.refreshBankNotices()
                 store.clear(subscription)

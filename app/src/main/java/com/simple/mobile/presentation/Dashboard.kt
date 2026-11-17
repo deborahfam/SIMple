@@ -59,7 +59,7 @@ private val Navy = Color(0xFF35234F)
 @Composable fun Dashboard(model: DashboardViewModel, updates: com.simple.mobile.data.updates.AppUpdates, onInstallUpdate: () -> Unit, onConnect: () -> Unit,
     demo: com.simple.mobile.presentation.recharge.RechargeDemoViewModel, onDemoPin: (Boolean, String) -> Unit,
     onQuery: (CubacelQuery) -> Unit, onRefreshAll: () -> Unit, onRefreshNeeded: () -> Unit, onRetryQueries: () -> Unit, onRechargeDemo: () -> Unit, onRescanSms: () -> Unit, onReminders: (Boolean) -> Unit, onNotificationSettings: () -> Unit, onSmsEnabled: (Boolean) -> Unit, onSyncSms: () -> Unit, onSettings: () -> Unit, onAppSettings: () -> Unit,
-    onDial: (String) -> Unit, onPickContact: () -> Unit,
+    onPickContact: () -> Unit,
     onTransfer: (com.simple.mobile.domain.transfer.TransferDraft) -> Boolean) {
     val state by model.state.collectAsStateWithLifecycle()
     val update by updates.state.collectAsStateWithLifecycle()
@@ -80,7 +80,7 @@ private val Navy = Color(0xFF35234F)
     val statisticsScroll = rememberLazyListState()
     val settingsScroll = rememberLazyListState()
     var showPackages by rememberSaveable(state.selected) { mutableStateOf(false) }
-    var buyPlans by remember { mutableStateOf(false) }
+    var buyPlans by rememberSaveable { mutableStateOf(false) }
     var transfer by rememberSaveable { mutableStateOf(false) }
     var delete by remember { mutableStateOf(false) }
     var deleteSubscription by remember { mutableStateOf<Int?>(null) }
@@ -509,19 +509,8 @@ private val Navy = Color(0xFF35234F)
             }
         }
         if (transfer) TransferPanel(state, model, onPickContact, onTransfer) { transfer = false }
-        if (buyPlans) AlertDialog(onDismissRequest = { buyPlans = false },
-            title = { Text("Comprar un plan") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("Abre el menú de Cubacel para elegir un plan de datos, minutos o mensajes y consultar su precio actual.")
-                    state.displayLines.firstOrNull { it.subscription == state.selected }?.let {
-                        Text("Línea seleccionada: ${it.label}", fontWeight = FontWeight.SemiBold)
-                    }
-                    Text("En Teléfono, selecciona tu SIM Cubacel y confirma allí la compra. Al volver, pulsa Actualizar todo para consultar tus recursos.", color = Muted)
-                }
-            },
-            confirmButton = { TextButton(onClick = { buyPlans = false; onDial("*133#") }) { Text("Abrir menú de planes") } },
-            dismissButton = { TextButton(onClick = { buyPlans = false }) { Text("Cancelar") } })
+        if (buyPlans) com.simple.mobile.presentation.plans.PlanPurchaseScreen(state, model,
+            onClose = { buyPlans = false }, onPermissions = onConnect, onRefresh = onRefreshAll)
         com.simple.mobile.presentation.recharge.RechargeScreen(demo, onDemoPin) { subscription ->
             com.simple.mobile.presentation.recharge.BankRechargeNotices(state.copy(selected = subscription),
                 onEnabled = { enabled -> model.setBankSms(enabled); if (enabled) onSmsEnabled(true) },

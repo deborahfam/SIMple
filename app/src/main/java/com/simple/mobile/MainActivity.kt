@@ -123,7 +123,6 @@ class MainActivity : ComponentActivity() {
                 onRescanSms = { model.syncCarrierSms(rescan = true) },
                 onSettings = { open(Intent(Settings.ACTION_WIRELESS_SETTINGS)) },
                 onAppSettings = { open(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName"))) },
-                onDial = { code -> openCarrier(Intent(Intent.ACTION_DIAL, Uri.fromParts("tel", code, null)), model.state.value.selected) },
                 onPickContact = {
                     try { contactPicker.launch(Intent(Intent.ACTION_PICK, ContactsContract.CommonDataKinds.Phone.CONTENT_URI)) }
                     catch (_: ActivityNotFoundException) { model.notify("No hay un selector de contactos disponible. Escribe el número manualmente.") }

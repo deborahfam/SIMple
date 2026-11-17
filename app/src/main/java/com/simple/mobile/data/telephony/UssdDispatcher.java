@@ -60,6 +60,18 @@ public final class UssdDispatcher {
         return result;
     }
 
+    /** Separate allowlisted purchase entry point; caller must review SIM, plan and charge first. */
+    public CompletableFuture<String> purchasePlan(int subscriptionId, String planId) {
+        CompletableFuture<String> result = new CompletableFuture<>();
+        String code = planId == null ? null : com.simple.mobile.domain.plans.PlanCatalog.codeFor(planId);
+        if (code == null) {
+            result.completeExceptionally(new IllegalArgumentException("Unknown plan"));
+            return result;
+        }
+        handler.post(() -> dispatch(subscriptionId, code, result));
+        return result;
+    }
+
     private void dispatch(int subscriptionId, String code, CompletableFuture<String> result) {
         if (result.isDone()) return;
         if (busy) { fail(result, Failure.BUSY); return; }

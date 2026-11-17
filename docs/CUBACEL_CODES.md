@@ -77,3 +77,17 @@ ACTION_DIAL after a recipient/amount review; it never constructs a PIN-bearing c
 places a call, or claims carrier confirmation from returning to the app. Amount and recipient
 must be entered and confirmed in the carrier menu. The displayed fee is a published reference,
 not a live quote. Received transfers do not extend the receiving line's validity.
+
+## Direct plan purchase — November 17, 2026
+
+Observed on the authorized handset: `*133#`, option 1 (Datos), option 4 (Planes).
+The displayed order is 4.5 GB / 240 CUP; 2 GB + 15 min + 20 SMS / 120 CUP;
+4 GB + 35 min + 40 SMS / 240 CUP; 6 GB + 60 min + 70 SMS / 360 CUP.
+Selecting option 1 displayed “¿Desea comprar el plan de 4.5GB x 240.00? Marque 1
+para confirmar.” The final confirmation was NOT sent. Other final prompts were not inspected.
+
+At the owner's explicit request, `PlanCatalog` supplies the chained purchase commands
+`*133*1*4*1*1#` through `*133*1*4*4*1#`. This is an owner-supplied integration, not
+an officially published or completed-live-purchase verification. Only the in-app final
+purchase confirmation enables sending. The read-only `CubacelQuery` enum is unchanged.
+Unknown replies and timeouts must never trigger another send or be labeled successful.

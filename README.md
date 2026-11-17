@@ -26,13 +26,12 @@ update the app in place while preserving saved readings and recipients. Do not u
 - Resource trends compare the last two measured readings per category within seven days. They show
   observed changes, not continuous consumption or forecasts. Known purchases/recharges, increases,
   and expiry changes suppress reduction estimates; unlimited data is not compared to finite quotas.
-- Prominent **Recargar** and **Comprar planes** actions open user-confirmed carrier flows. Plan
-  purchases use the existing `*133#` dialer menu; prices and purchases are confirmed with Cubacel.
+- **Comprar planes** selects and reviews four data/combo offers, then sends one subscription-scoped purchase USSD only after **Confirmar compra**. The full chained codes are owner-supplied and have not been validated by a completed live purchase; carrier responses are shown without assuming success.
 - Optional local reminders cover known expiry dates, recharge reopening and low resources.
 - **Actualizar todo** queries balance, data, minutes, SMS, bonuses and recharge status sequentially
   on the selected SIM, with category progress. **Detener** skips pending queries while allowing
   the in-flight response to be saved. Any query or storage failure stops the sequence without retries.
-- Plan purchases open the phone dialer for user completion. Recargar contains the in-app recharge simulator and optional bank response reading.
+- Plan purchases use a separate allowlisted native USSD action. Recargar contains the in-app recharge simulator and optional bank response reading.
 - Optional sender-filtered SMS import and new-message ingestion after Android permissions.
 - Optional single-contact picker without address-book permission. Saved recipients and transfer preparation records remain encrypted locally.
 - No contacts or identifier permissions; no telemetry or raw carrier logs. Internet is used only for GitHub update checks (manual or optional once daily on app open) and user-requested APK downloads.
@@ -348,3 +347,41 @@ This connects real **response reading**, not real bank authentication or recharg
 There is no verified live submission adapter yet. SIMple does not send, retry, settle or automatically
 attribute a bank transaction from these SMS; sender text alone is not cryptographic authentication.
 The existing offline recharge simulator remains clearly separate.
+
+## Native plan selection and purchase
+
+**Comprar planes** presents the four entries observed under `*133# → 1 Datos → 4 Planes`:
+4.5 GB for 240 CUP; 2 GB + 15 min + 20 SMS for 120 CUP; 4 GB + 35 min + 40 SMS for
+240 CUP; and 6 GB + 60 min + 70 SMS for 360 CUP. The daily plan is outside this menu
+and is not included. Published allowances include 300 MB of national navigation and
+35 days from first use. Prices are a dated catalog, not a live quote.
+
+The full-screen selector leads to a review of the original SIM, resources and charge.
+Only **Confirmar compra** sends `*133*1*4*option*1#`, using the fixed catalog options
+1–4. These chained codes were supplied/authorized by the owner. The live inspection
+verified the menu and the first plan's final confirmation prompt, but deliberately did
+not send the final `1`; no successful chained purchase has been verified. The review
+states this limitation. Never test these purchase commands without explicit authorization
+to incur the displayed charge.
+
+A separate `purchasePlan` entry point shares the application-wide USSD dispatcher with
+read-only queries. It checks permissions, active subscription and Cubacel operator code,
+and accepts only catalog IDs. There is no arbitrary-code UI, dialer redirect, automatic
+retry, SIM fallback, or automatic sending on permission return. Users review and confirm again.
+
+An AES-GCM encrypted last-attempt record is committed before dispatch. Double taps,
+closing/reopening the screen, and process recreation cannot replay it. Restored in-flight
+attempts and network/timeouts are uncertain, not failed purchases. The application-scoped
+controller continues while the UI is closed. A response is displayed in memory only, under
+screenshot protection, and is not classified as proof of purchase. No raw reply is stored
+or logged, and no balance is locally decremented. **Consultar saldo y recursos** is a
+separate user action. Users must acknowledge reviewing the outcome before starting a new
+purchase. Deleting local line/all history clears the corresponding attempt; deletion is
+blocked while a purchase is in flight.
+
+Unit tests cover the exact command mapping, duplicate submission, storage failure,
+restart recovery, timeout uncertainty and pre-dispatch failure. Emulator instrumentation
+checks encrypted persistence and tamper rejection. These checks do not execute carrier purchases.
+
+Source: https://www.etecsa.cu/es/movil/planes-personales
+Published price image: https://www.etecsa.cu/sites/default/files/inline-images/1.%20900X510.jpg

@@ -21,6 +21,20 @@ class SimpleApplication : Application() {
     val reminders by lazy { com.simple.mobile.data.reminders.LocalReminders(this) }
     private val ussd by lazy { UssdDispatcher(this, worker) }
     fun dispatcher() = ussd
+    val purchases by lazy {
+        com.simple.mobile.domain.plans.PlanPurchaseController(com.simple.mobile.data.plans.PlanPurchaseStore(this), worker) { sub, id ->
+            val result = java.util.concurrent.CompletableFuture<String>()
+            ussd.purchasePlan(sub, id).whenComplete { reply, error ->
+                val failure = (error as? UssdDispatcher.QueryException)?.failure
+                if (error == null) result.complete(reply)
+                else if (failure in setOf(UssdDispatcher.Failure.PERMISSION, UssdDispatcher.Failure.INACTIVE_SIM,
+                        UssdDispatcher.Failure.WRONG_CARRIER, UssdDispatcher.Failure.BUSY))
+                    result.completeExceptionally(com.simple.mobile.domain.plans.PlanNotSentException())
+                else result.completeExceptionally(error)
+            }
+            result
+        }
+    }
     override fun onCreate() {
         super.onCreate()
         worker.execute { reconcileReminders(); refreshBankNotices() }
