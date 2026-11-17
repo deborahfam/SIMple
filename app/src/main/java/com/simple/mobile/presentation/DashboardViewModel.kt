@@ -44,7 +44,7 @@ data class DashboardState(
     val activeQuery: CubacelQuery? = null, val queryNumber: Int = 0, val queryTotal: Int = 0,
     val querySubscription: Int = -1, val stopRequested: Boolean = false,
     val smsStatus: SmsSyncStatus = SmsSyncStatus(), val smsReadAllowed: Boolean = false, val smsReceiveAllowed: Boolean = false,
-    val nicknames: Map<Int, String> = emptyMap(), val managingLine: Boolean = false,
+    val linePhones: Map<Int, String> = emptyMap(), val nicknames: Map<Int, String> = emptyMap(), val managingLine: Boolean = false,
     val recipients: List<Recipient> = emptyList(), val transfers: List<TransferRecord> = emptyList(),
     val transferReady: Boolean = false, val transferSaving: Boolean = false,
     val pickedContact: Pair<String, String>? = null, val refreshOffer: Int? = null,
@@ -52,7 +52,7 @@ data class DashboardState(
     val mobileUsage: com.simple.mobile.data.statistics.MobileUsageState = com.simple.mobile.data.statistics.MobileUsageState(),
     val remindersEnabled: Boolean = false, val notificationsAllowed: Boolean = false
  ) {
-    val displayLines: List<Line> get() = LineCatalog.visible(lines, (entries.map { it.subscription } + transfers.map { it.subscription } + bankNotices.map { it.receivingSubscription }).toSet(), nicknames)
+    val displayLines: List<Line> get() = LineCatalog.visible(lines, (linePhones.keys + entries.map { it.subscription } + transfers.map { it.subscription } + bankNotices.map { it.receivingSubscription }).toSet(), nicknames)
     fun isQuerying(query: CubacelQuery): Boolean = busy && querySubscription == selected && activeQuery == query
 }
 
@@ -172,9 +172,10 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
             try {
                 val entries = store.history()
                 val names = store.nicknames()
+                val phones = store.linePhones()
                 val dates = store.rechargeDates()
                 app.publishReadings(entries)
-                if (!disposed) mutable.update { it.copy(entries = entries, unreadableCount = store.unreadableCount, nicknames = names, rechargeDates = dates, loading = false, storageReady = true) }
+                if (!disposed) mutable.update { it.copy(entries = entries, unreadableCount = store.unreadableCount, nicknames = names, linePhones = phones, rechargeDates = dates, loading = false, storageReady = true) }
             } catch (_: Exception) {
                 if (!disposed) mutable.update { it.copy(loading = false, storageReady = false,
                     message = "No se pudo abrir el historial cifrado. Tus datos no se han borrado. Puedes reintentar desde Ajustes.") }
@@ -306,15 +307,16 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
         app.smsImport.setEnabled(false)
         notify("Importación automática de SMS desactivada. Tus lecturas guardadas se conservan.")
     }
-    fun renameLine(subscription: Int, nickname: String) {
+    fun renameLine(subscription: Int, nickname: String, phone: String) {
         if (mutable.value.managingLine || !mutable.value.storageReady) return
         mutable.update { it.copy(managingLine = true) }
         worker.execute {
             try {
-                store.rename(subscription, nickname)
+                store.saveLineProfile(subscription, nickname, phone)
                 val names = store.nicknames()
+                val phones = store.linePhones()
                 val dates = store.rechargeDates()
-                if (!disposed) mutable.update { it.copy(nicknames = names, rechargeDates = dates, message = "Nombre de la línea guardado.") }
+                if (!disposed) mutable.update { it.copy(nicknames = names, linePhones = phones, rechargeDates = dates, message = "Datos de la línea guardados.") }
             } catch (_: Exception) { if (!disposed) notify("No se pudo guardar el nombre de la línea.") }
             finally { if (!disposed) mutable.update { it.copy(managingLine = false) } }
         }
@@ -335,8 +337,9 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
                 app.smsImport.clearSummary()
                 app.refreshReadings()
                 val names = store.nicknames()
+                val phones = store.linePhones()
                 val dates = store.rechargeDates()
-                if (!disposed) mutable.update { it.copy(nicknames = names, rechargeDates = dates, storageReady = true,
+                if (!disposed) mutable.update { it.copy(nicknames = names, linePhones = phones, rechargeDates = dates, storageReady = true,
                     message = if (subscription == null) "Datos locales eliminados. Importación SMS desactivada."
                         else "Datos de esta línea eliminados. Las demás líneas se conservan. Importación SMS desactivada.") }
             } catch (_: Exception) { if (!disposed) notify("No se pudieron borrar los datos. Inténtalo de nuevo.") }

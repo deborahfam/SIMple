@@ -41,8 +41,9 @@ import com.simple.mobile.presentation.FlowProgress
     val subscription = attempt?.subscription ?: initialSub
     val line = attempt?.line ?: dashboard.displayLines.firstOrNull { it.subscription == subscription }?.label.orEmpty()
     var formStep by rememberSaveable { mutableIntStateOf(0) }
-    var phone by rememberSaveable { mutableStateOf("") }
-    var cup by rememberSaveable { mutableStateOf("") }
+    var destination by rememberSaveable { mutableIntStateOf(dashboard.selected) }
+    val phone = dashboard.linePhones[destination].orEmpty()
+    var cup by rememberSaveable { mutableStateOf("360") }
     var pin by remember(attempt?.id) { mutableStateOf("") }
     var authConfirmed by remember(attempt?.id) { mutableStateOf(false) }
     var outcomeReviewed by remember(attempt?.id) { mutableStateOf(false) }
@@ -79,12 +80,12 @@ import com.simple.mobile.presentation.FlowProgress
                             when {
                                 state.busy -> Button(onClick = {}, enabled = false, modifier = button) { Text("Esperando respuesta…") }
                                 attempt == null && formStep < 2 -> Button(onClick = { focus.clearFocus(); formStep++ }, modifier = button,
-                                    enabled = state.ready && (formStep == 0 || (MetropolitanoProtocol.phone(phone) != null && MetropolitanoProtocol.amount(cup) != null))) { Text("Continuar") }
+                                    enabled = state.ready && (formStep == 0 || (MetropolitanoProtocol.phone(phone) != null && MetropolitanoProtocol.amount(cup) != null))) { Text(if (formStep == 0) "Elegir otro importe" else "Continuar") }
                                 !permitted && (attempt == null || attempt.phase == BankPhase.AUTH_RESPONSE) -> Button(onClick = onPermissions, modifier = button) { Text("Permitir acceso al teléfono") }
                                 attempt == null -> Button(onClick = {
                                     val value = pin.toCharArray(); pin = ""; focus.clearFocus()
                                     controller.authenticate(subscription, line, phone.trim(), MetropolitanoProtocol.amount(cup)!!, value)
-                                }, modifier = button, enabled = available && state.ready && MetropolitanoProtocol.validPin(pin.toCharArray())) { Text("Autenticar en Metropolitano") }
+                                }, modifier = button, enabled = available && state.ready && MetropolitanoProtocol.phone(phone) != null && MetropolitanoProtocol.amount(cup) != null && MetropolitanoProtocol.validPin(pin.toCharArray())) { Text("Autenticar en Metropolitano") }
                                 attempt.phase == BankPhase.AUTH_RESPONSE -> Button(onClick = { controller.confirm(attempt.id, authConfirmed) },
                                     modifier = button, enabled = available && authConfirmed && state.ready) { Text("Confirmar recarga · ${attempt.cup} CUP") }
                                 else -> OutlinedButton(onClick = onClose, modifier = button) { Text("Volver a mi línea") }
@@ -94,7 +95,7 @@ import com.simple.mobile.presentation.FlowProgress
                 }) { padding ->
                 Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.TopCenter) {
                     Column(Modifier.widthIn(max = 600.dp).fillMaxWidth().verticalScroll(scroll).padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                        FlowProgress(step, listOf("Tu banco", "Número e importe", "Revisa y confirma", "Tu solicitud"))
+                        FlowProgress(step, listOf("Tu recarga", "Línea e importe", "Revisa y confirma", "Tu solicitud"))
                         if (!state.ready && state.error == null) LinearProgressIndicator(Modifier.fillMaxWidth())
                         state.error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }) }
                         if (!eligible) Text("Selecciona en Inicio la SIM Cubacel registrada en Metropolitano.", color = MaterialTheme.colorScheme.error)
@@ -115,13 +116,16 @@ import com.simple.mobile.presentation.FlowProgress
                             }
                             Text("Necesitas tener el servicio bancario registrado en esta SIM. SIMple enviará las solicitudes por USSD desde tu teléfono.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Text("Línea: ${line.ifBlank { "Sin SIM seleccionada" }}", style = MaterialTheme.typography.titleSmall)
-                            Text("BPA y BANDEC aún no están disponibles.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            RechargeLineSelector(dashboard, destination) { destination = it }
+                            Button(onClick = { cup = "360"; formStep = 2 }, enabled = MetropolitanoProtocol.phone(phone) != null && state.ready,
+                                modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) {
+                                Text("Recargar 360 CUP")
+                            }
+                            Text("Revisa y autentícate para confirmar el cargo.", style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
                         } else if (attempt == null && formStep == 1) {
-                            Text("¿A qué móvil recargas?", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                            OutlinedTextField(phone, { phone = it.filter { c -> c in '0'..'9' }.take(8) }, modifier = Modifier.fillMaxWidth(),
-                                label = { Text("Número Cubacel") }, prefix = { Text("+53 ") }, supportingText = { Text("8 dígitos, empieza por 5") },
-                                isError = phone.isNotEmpty() && MetropolitanoProtocol.phone(phone) == null,
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone), singleLine = true)
+                            Text("Línea e importe", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                            RechargeLineSelector(dashboard, destination) { destination = it }
                             OutlinedTextField(cup, { cup = it.take(8) }, modifier = Modifier.fillMaxWidth(), label = { Text("Importe") }, suffix = { Text("CUP") },
                                 supportingText = { Text("De 1 a 360 CUP, sin decimales") }, isError = cup.isNotEmpty() && MetropolitanoProtocol.amount(cup) == null,
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), singleLine = true)
@@ -188,4 +192,34 @@ import com.simple.mobile.presentation.FlowProgress
             }
         }
     }
+}
+
+@Composable private fun RechargeLineSelector(dashboard: DashboardState, selected: Int, onSelect: (Int) -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    val destination = dashboard.displayLines.firstOrNull { it.subscription == selected }
+    val phone = dashboard.linePhones[selected].orEmpty()
+    Text("Línea que recibe la recarga", style = MaterialTheme.typography.titleSmall)
+    Box(Modifier.fillMaxWidth()) {
+        OutlinedButton(onClick = { expanded = true }, modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp),
+            shape = MaterialTheme.shapes.large) {
+            Column(Modifier.weight(1f), horizontalAlignment = Alignment.Start) {
+                Text(destination?.label ?: "Seleccionar línea")
+                Text(if (phone.isBlank()) "Número sin configurar" else "+53 $phone", style = MaterialTheme.typography.bodySmall)
+            }
+            Icon(Icons.Outlined.ExpandMore, null)
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            dashboard.displayLines.forEach { line ->
+                DropdownMenuItem(text = {
+                    Column {
+                        Text(line.label)
+                        Text(dashboard.linePhones[line.subscription]?.let { "+53 $it" } ?: "Número sin configurar", style = MaterialTheme.typography.bodySmall)
+                    }
+                }, onClick = { onSelect(line.subscription); expanded = false },
+                    leadingIcon = { if (line.subscription == selected) Icon(Icons.Outlined.Check, null) })
+            }
+        }
+    }
+    if (phone.isBlank()) Text("Guarda el número una sola vez en Ajustes → Editar línea para poder recargarla.",
+        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 }

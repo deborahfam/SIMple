@@ -91,6 +91,7 @@ private val Navy = Color(0xFF35234F)
     var deleteLabel by remember { mutableStateOf("") }
     var rename by remember { mutableStateOf<Line?>(null) }
     var nickname by remember { mutableStateOf("") }
+    var linePhone by remember { mutableStateOf("") }
     val snackbar = remember { SnackbarHostState() }
     LaunchedEffect(state.message) { state.message?.let { snackbar.showSnackbar(it); model.dismissMessage() } }
     MaterialTheme(colorScheme = if (isSystemInDarkTheme()) darkColorScheme(primary = Teal, background = Paper, surface = Color(0xFF241F2E), secondaryContainer = Color(0xFF383044), onSecondaryContainer = Ink, outlineVariant = Color(0xFF40374D), onSurface = Ink, onBackground = Ink) else lightColorScheme(primary = Teal, secondary = Navy, background = Paper, surface = Color.White, secondaryContainer = Color(0xFFEEE8F7), onSecondaryContainer = Ink, outlineVariant = Color(0xFFE8E2EF),
@@ -195,7 +196,7 @@ private val Navy = Color(0xFF35234F)
                             WhiteCard {
                                 Text(line.label, fontWeight = FontWeight.Bold)
                                 if (!line.active) Text("Línea guardada: puedes revisar sus lecturas sin tener la SIM activa. Las consultas están deshabilitadas.", color = Muted, fontSize = 13.sp)
-                                OutlinedButton(onClick = { rename = line; nickname = line.nickname }, enabled = state.storageReady && !state.managingLine) { Text("Cambiar nombre") }
+                                OutlinedButton(onClick = { rename = line; nickname = line.nickname; linePhone = state.linePhones[line.subscription].orEmpty() }, enabled = state.storageReady && !state.managingLine) { Text("Editar línea") }
                                 TextButton(onClick = { deleteSubscription = line.subscription; deleteLabel = line.label; delete = true },
                                     enabled = state.storageReady && !state.busy && !state.managingLine && !state.transferSaving) { Text("Eliminar datos de esta línea") }
                             }
@@ -553,10 +554,15 @@ private val Navy = Color(0xFF35234F)
                 onSync = onRescanSms)
         }
         rename?.let { line ->
-            AlertDialog(onDismissRequest = { rename = null }, title = { Text("Nombre de la línea") },
-                text = { OutlinedTextField(value = nickname, onValueChange = { nickname = it.filterNot { c -> c.isISOControl() }.take(40) },
-                    label = { Text("Ej. Personal o Trabajo") }, supportingText = { Text("${nickname.length}/40 · Vacío restaura el nombre original") }, singleLine = true) },
-                confirmButton = { TextButton(onClick = { model.renameLine(line.subscription, nickname); rename = null }) { Text("Guardar") } },
+            AlertDialog(onDismissRequest = { rename = null }, title = { Text("Datos de la línea") },
+                text = { Column(verticalArrangement = Arrangement.spacedBy(12.dp)) { OutlinedTextField(value = nickname, onValueChange = { nickname = it.filterNot { c -> c.isISOControl() }.take(40) },
+                    label = { Text("Ej. Personal o Trabajo") }, supportingText = { Text("${nickname.length}/40 · Vacío restaura el nombre original") }, singleLine = true)
+                    OutlinedTextField(value = linePhone, onValueChange = { linePhone = it.filter { c -> c in '0'..'9' }.take(8) },
+                        label = { Text("Número de esta línea") }, prefix = { Text("+53 ") },
+                        supportingText = { Text("Se usará al recargar esta línea. Comprueba que sea correcto.") },
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Phone), singleLine = true)
+                } },
+                confirmButton = { TextButton(enabled = linePhone.isEmpty() || Regex("5[0-9]{7}").matches(linePhone), onClick = { model.renameLine(line.subscription, nickname, linePhone); rename = null }) { Text("Guardar") } },
                 dismissButton = { TextButton(onClick = { rename = null }) { Text("Cancelar") } })
         }
         if (delete) AlertDialog(onDismissRequest = { delete = false }, title = { Text("¿Eliminar datos de $deleteLabel?") },

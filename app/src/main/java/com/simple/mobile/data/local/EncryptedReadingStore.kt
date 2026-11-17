@@ -52,6 +52,17 @@ class EncryptedReadingStore(context: Context, name: String = "readings.db") : SQ
             while (cursor.moveToNext()) add(cursor.getString(0) to decrypt(cursor.getString(0), cursor.getBlob(1), cursor.getBlob(2)))
         }
     }
+    @Synchronized fun linePhones(): Map<Int, String> = profileRows().mapNotNull { (_, json) ->
+        json.optString("phone").takeIf { it.isNotBlank() }?.let { json.getInt("subscription") to it }
+    }.toMap()
+    @Synchronized fun saveLineProfile(subscription: Int, nickname: String, phone: String) {
+        require(subscription >= 0 && nickname.length <= 40 && nickname.none { it.isISOControl() })
+        require(phone.isEmpty() || Regex("5[0-9]{7}").matches(phone))
+        updateProfile(subscription) { json ->
+            json.put("nickname", nickname.trim())
+            if (phone.isEmpty()) json.remove("phone") else json.put("phone", phone)
+        }
+    }
     @Synchronized fun nicknames(): Map<Int, String> = profileRows().associate { it.second.getInt("subscription") to it.second.getString("nickname") }
     @Synchronized fun rechargeDates(): Map<Int, java.time.LocalDate> = profileRows().mapNotNull { (_, json) ->
         json.optString("rechargeDate").takeIf { it.isNotBlank() }?.let { json.getInt("subscription") to java.time.LocalDate.parse(it) }
@@ -71,7 +82,7 @@ class EncryptedReadingStore(context: Context, name: String = "readings.db") : SQ
         val json = existing?.second ?: JSONObject().put("subscription", subscription).put("nickname", "")
         update(json)
         val id = existing?.first ?: UUID.randomUUID().toString()
-        if (json.optString("nickname").isEmpty() && !json.has("rechargeDate")) {
+        if (json.optString("nickname").isEmpty() && !json.has("rechargeDate") && !json.has("phone")) {
             writableDatabase.delete("line_profiles", "id=?", arrayOf(id))
         } else secureWrite("line_profiles", id, json)
     }

@@ -11,6 +11,26 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class EncryptedStoreTest {
+    @Test fun linePhoneSurvivesRenameReopenAndLineDeletion() {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val name = "test-line-phone.db"
+        context.deleteDatabase(name)
+        EncryptedReadingStore(context, name).use { store ->
+            store.saveLineProfile(77, "Personal", "55500000")
+            store.saveLineProfile(88, "Trabajo", "55500001")
+            store.rename(77, "")
+        }
+        EncryptedReadingStore(context, name).use { store ->
+            assertEquals("55500000", store.linePhones()[77])
+            assertThrows(IllegalArgumentException::class.java) { store.saveLineProfile(77, "", "55500000#") }
+            assertEquals("55500000", store.linePhones()[77])
+            store.clear(77)
+            assertNull(store.linePhones()[77])
+            assertEquals("55500001", store.linePhones()[88])
+        }
+        context.deleteDatabase(name)
+    }
+
     @Test fun duplicateSmsSkipsHistoryDecryptionAndPreservesDamagedRows() {
         val context = ApplicationProvider.getApplicationContext<android.content.Context>()
         val name = "test-duplicate-fast-path.db"
