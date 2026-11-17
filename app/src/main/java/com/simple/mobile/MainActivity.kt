@@ -128,8 +128,7 @@ class MainActivity : ComponentActivity() {
                     try { contactPicker.launch(Intent(Intent.ACTION_PICK, ContactsContract.CommonDataKinds.Phone.CONTENT_URI)) }
                     catch (_: ActivityNotFoundException) { model.notify("No hay un selector de contactos disponible. Escribe el número manualmente.") }
                 },
-                onTransfer = { draft -> openCarrier(Intent(Intent.ACTION_DIAL, Uri.fromParts("tel", TransferPolicy.MENU, null)), draft.subscription) },
-                onRechargeSite = { openCarrier(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.etecsa.cu/es/movil/necesitas-saldo")), model.state.value.selected) })
+                onTransfer = { draft -> openCarrier(Intent(Intent.ACTION_DIAL, Uri.fromParts("tel", TransferPolicy.MENU, null)), draft.subscription) })
         }
     }
     override fun onResume() {

@@ -32,7 +32,7 @@ update the app in place while preserving saved readings and recipients. Do not u
 - **Actualizar todo** queries balance, data, minutes, SMS, bonuses and recharge status sequentially
   on the selected SIM, with category progress. **Detener** skips pending queries while allowing
   the in-flight response to be saved. Any query or storage failure stops the sequence without retries.
-- Recharge and plan actions open the phone dialer or ETECSA website for user completion.
+- Plan purchases open the phone dialer for user completion. Recargar contains the in-app recharge simulator and optional bank response reading.
 - Optional sender-filtered SMS import and new-message ingestion after Android permissions.
 - Optional single-contact picker without address-book permission. Saved recipients and transfer preparation records remain encrypted locally.
 - No contacts or identifier permissions; no telemetry or raw carrier logs. Internet is used only for GitHub update checks (manual or optional once daily on app open) and user-requested APK downloads.
@@ -227,7 +227,7 @@ this app to install packages: [Android package installation permission](https://
 ## Compact dashboard (0.5.0)
 
 Home groups the selected SIM’s balance and four compact resource rows in one card.
-Resource timestamps and package breakdowns are available under **Ver detalles**. Refresh all lives inside the
+Resource rows align labels and remaining amounts, with expiry (or reading age when expiry is unknown) below. Tap a row to refresh that resource; its icon becomes a loading indicator. Narrow layouts and large fonts stack the label and amount. Exact timestamps and package breakdowns are available under **Ver detalles**. Refresh all lives inside the
 balance card; the smaller refresh icon queries only balance. Line renaming and deletion are in
 Settings. SMS connection is summarized on Home with a link to Settings, and package breakdowns
 expand on demand. Query progress, expiry warnings and damaged-reading notices remain visible.
@@ -328,7 +328,7 @@ it, with an authentication-bound Keystore key (30-second system authorization wi
 The dialog blocks screenshots, never saves typed PIN input across recreation, and offers
 **Olvidar PIN ficticio**. Devices without a secure screen lock can still type the demo PIN.
 No new SMS permission or banking receiver is added. The former external Transfermóvil launcher
-is replaced by this simulator; the separate recharge-card and official ETECSA links remain.
+is replaced by this simulator. The recharge-card and ETECSA website alternatives have been removed from Recargar.
 
 ## Bank recharge responses (0.6.3)
 

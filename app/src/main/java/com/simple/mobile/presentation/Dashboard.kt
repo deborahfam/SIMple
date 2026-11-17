@@ -56,7 +56,7 @@ private val Navy = Color(0xFF35234F)
 @Composable fun Dashboard(model: DashboardViewModel, updates: com.simple.mobile.data.updates.AppUpdates, onInstallUpdate: () -> Unit, onConnect: () -> Unit,
     demo: com.simple.mobile.presentation.recharge.RechargeDemoViewModel, onDemoPin: (Boolean, String) -> Unit,
     onQuery: (CubacelQuery) -> Unit, onRefreshAll: () -> Unit, onRefreshNeeded: () -> Unit, onRetryQueries: () -> Unit, onRechargeDemo: () -> Unit, onRescanSms: () -> Unit, onReminders: (Boolean) -> Unit, onNotificationSettings: () -> Unit, onSmsEnabled: (Boolean) -> Unit, onSyncSms: () -> Unit, onSettings: () -> Unit, onAppSettings: () -> Unit,
-    onDial: (String) -> Unit, onRechargeSite: () -> Unit, onPickContact: () -> Unit,
+    onDial: (String) -> Unit, onPickContact: () -> Unit,
     onTransfer: (com.simple.mobile.domain.transfer.TransferDraft) -> Boolean) {
     val state by model.state.collectAsStateWithLifecycle()
     val update by updates.state.collectAsStateWithLifecycle()
@@ -80,7 +80,6 @@ private val Navy = Color(0xFF35234F)
     var recharge by remember { mutableStateOf(false) }
     var buyPlans by remember { mutableStateOf(false) }
     var transfer by rememberSaveable { mutableStateOf(false) }
-    var confirmDial by remember { mutableStateOf<String?>(null) }
     var delete by remember { mutableStateOf(false) }
     var deleteSubscription by remember { mutableStateOf<Int?>(null) }
     var deleteLabel by remember { mutableStateOf("") }
@@ -268,13 +267,17 @@ private val Navy = Color(0xFF35234F)
                                     SimResource("Internet", general?.let { if (it.unlimited()) "Ilimitado" else "${gb(it.bytes())} GB" } ?: "—",
                                         Icons.Outlined.DataUsage, enabled, data, now, state.isQuerying(CubacelQuery.DATA),
                                         general?.expiresAt() ?: data?.expiresAt()) { onQuery(CubacelQuery.DATA) }
+                                    HorizontalDivider(color = Color.White.copy(alpha = 0.10f), modifier = Modifier.padding(start = 36.dp))
                                     SimResource("Minutos", voice?.voiceSeconds()?.let { "${number(BigDecimal(it).divide(BigDecimal(60), 2, java.math.RoundingMode.DOWN))} min" } ?: "—",
                                         Icons.Outlined.Call, enabled, voice, now, state.isQuerying(CubacelQuery.VOICE)) { onQuery(CubacelQuery.VOICE) }
+                                    HorizontalDivider(color = Color.White.copy(alpha = 0.10f), modifier = Modifier.padding(start = 36.dp))
                                     SimResource("Mensajes", sms?.smsCount()?.let { "$it SMS" } ?: "—", Icons.Outlined.Sms,
                                         enabled, sms, now, state.isQuerying(CubacelQuery.SMS)) { onQuery(CubacelQuery.SMS) }
+                                    HorizontalDivider(color = Color.White.copy(alpha = 0.10f), modifier = Modifier.padding(start = 36.dp))
                                     SimResource("Bonos", bonus?.let { "${it.bundles().size} bolsas" } ?: "—", Icons.Outlined.Redeem,
                                         enabled, bonus, now, state.isQuerying(CubacelQuery.BONUSES_AND_USD_PLANS)) { onQuery(CubacelQuery.BONUSES_AND_USD_PLANS) }
                                 }
+                                if (enabled) Text("Toca un recurso para actualizarlo", color = Color(0xFFDDCEED), fontSize = 12.sp)
                                 val bundleReadings = listOfNotNull(data, bonus)
                                 run {
                                     HorizontalDivider(color = Color.White.copy(alpha = 0.2f))
@@ -516,13 +519,7 @@ private val Navy = Color(0xFF35234F)
                 HorizontalDivider()
                 Text("El simulador usa un número ficticio, un importe en CUP y el PIN de prueba 1234. No conecta con Transfermóvil ni con tu banco.", fontSize = 13.sp)
                 Button(onClick = { recharge = false; onRechargeDemo() }, modifier = Modifier.fillMaxWidth(), enabled = !state.busy) { Text("Probar recarga dentro de SIMple") }
-                OutlinedButton(onClick = { recharge = false; confirmDial = "*666" }, modifier = Modifier.fillMaxWidth()) { Text("Usar tarjeta de recarga") }
-                OutlinedButton(onClick = { recharge = false; onRechargeSite() }, modifier = Modifier.fillMaxWidth()) { Text("Vías oficiales de ETECSA") }
             } }, confirmButton = { TextButton(onClick = { recharge = false }) { Text("Cerrar") } })
-        confirmDial?.let { code -> AlertDialog(onDismissRequest = { confirmDial = null }, title = { Text("Continuar en Teléfono") },
-            text = { Text("Se abrirá $code en el marcador. Elige tu SIM Cubacel y confirma allí. SIMple no realiza compras ni recargas automáticamente.") },
-            confirmButton = { TextButton(onClick = { confirmDial = null; onDial(code) }) { Text("Abrir marcador") } },
-            dismissButton = { TextButton(onClick = { confirmDial = null }) { Text("Cancelar") } }) }
         rename?.let { line ->
             AlertDialog(onDismissRequest = { rename = null }, title = { Text("Nombre de la línea") },
                 text = { OutlinedTextField(value = nickname, onValueChange = { nickname = it.filterNot { c -> c.isISOControl() }.take(40) },
@@ -604,31 +601,45 @@ private fun rechargeDate(at: Long) = SimpleDateFormat("d 'de' MMMM 'de' yyyy", L
     enabled: Boolean, reading: CarrierReading?, now: Long, querying: Boolean,
     expiry: Long? = reading?.expiresAt(), action: () -> Unit) {
     val expired = isExpired(expiry, now)
-    val largeText = LocalDensity.current.fontScale > 1.3f
-    Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).clip(RoundedCornerShape(10.dp))
-        .clickable(enabled = enabled, onClickLabel = "Consultar $title", onClick = action)
-        .semantics(mergeDescendants = true) {
-            contentDescription = "$title: $value. " + (if (querying) "Consultando." else reading?.let { freshnessLabel(it.receivedAt(), now) } ?: "Sin lectura.") +
-                (expiry?.let { " ${expirationLabel(it, now)}" } ?: "")
-        }.padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-        Icon(icon, null, tint = Mint, modifier = Modifier.size(18.dp))
-        Spacer(Modifier.width(10.dp))
-        if (largeText) {
-            Column(Modifier.weight(1f)) {
-                Text(title, color = Color(0xFFDDCEED), fontSize = 14.sp)
-                Text(value, color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
-                if (expired) Text("Vencido", color = Color(0xFFFFC4BA), fontSize = 12.sp)
+    val secondary = Color(0xFFDDCEED)
+    val detail = when {
+        querying -> "Consultando…"
+        reading == null -> "Sin lectura"
+        expiry != null -> expirationLabel(expiry, now)
+        else -> freshnessLabel(reading.receivedAt(), now)
+    }
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val stacked = maxWidth < 240.dp || LocalDensity.current.fontScale > 1.3f
+        Row(Modifier.fillMaxWidth().heightIn(min = 64.dp).clip(RoundedCornerShape(10.dp))
+            .clickable(enabled = enabled, role = Role.Button, onClickLabel = "Consultar $title", onClick = action)
+            .semantics(mergeDescendants = true) {
+                contentDescription = "$title: $value. " +
+                    (if (querying) "Consultando." else reading?.let { freshnessLabel(it.receivedAt(), now) } ?: "Sin lectura.") +
+                    (expiry?.let { " ${expirationLabel(it, now)}" } ?: "")
+            }.padding(vertical = 12.dp), verticalAlignment = Alignment.Top) {
+            Box(Modifier.size(24.dp), contentAlignment = Alignment.Center) {
+                if (querying) CircularProgressIndicator(Modifier.size(18.dp), color = Mint, strokeWidth = 2.dp)
+                else Icon(icon, null, tint = secondary, modifier = Modifier.size(20.dp))
             }
-        } else {
-            Text(title, fontSize = 14.sp, color = Color(0xFFDDCEED), modifier = Modifier.weight(1f))
-            Column(Modifier.weight(1f), horizontalAlignment = Alignment.End) {
-                Text(value, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = Color.White, textAlign = androidx.compose.ui.text.style.TextAlign.End)
-                if (expired) Text("Vencido", fontSize = 12.sp, color = Color(0xFFFFC4BA))
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                if (stacked) {
+                    Text(title, color = secondary, fontSize = 14.sp)
+                    Text(value, color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 18.sp,
+                        style = MaterialTheme.typography.titleMedium.copy(fontFeatureSettings = "tnum"))
+                } else {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically) {
+                        Text(title, color = secondary, fontSize = 14.sp, modifier = Modifier.weight(1f))
+                        Text(value, color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 18.sp,
+                            modifier = Modifier.weight(1f), textAlign = androidx.compose.ui.text.style.TextAlign.End,
+                            style = MaterialTheme.typography.titleMedium.copy(fontFeatureSettings = "tnum"))
+                    }
+                }
+                Text(detail, color = if (expired && !querying) Color(0xFFFFC4BA) else secondary,
+                    fontSize = 12.sp, lineHeight = 16.sp)
             }
         }
-        Spacer(Modifier.width(12.dp))
-        if (querying) CircularProgressIndicator(Modifier.size(16.dp), color = Mint, strokeWidth = 2.dp)
-        else Icon(Icons.Outlined.Refresh, null, tint = Mint, modifier = Modifier.size(16.dp))
     }
 }
 @Composable private fun SettingsRow(label: String, icon: ImageVector, action: () -> Unit) {
