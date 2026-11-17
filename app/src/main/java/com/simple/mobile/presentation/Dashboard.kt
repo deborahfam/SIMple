@@ -80,7 +80,6 @@ private val Navy = Color(0xFF35234F)
     val statisticsScroll = rememberLazyListState()
     val settingsScroll = rememberLazyListState()
     var showPackages by rememberSaveable(state.selected) { mutableStateOf(false) }
-    var recharge by remember { mutableStateOf(false) }
     var buyPlans by remember { mutableStateOf(false) }
     var transfer by rememberSaveable { mutableStateOf(false) }
     var delete by remember { mutableStateOf(false) }
@@ -352,14 +351,14 @@ private val Navy = Color(0xFF35234F)
                         }
                         item {
                             FlowRow(maxItemsInEachRow = if (stacked) 1 else 3, horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                QuickAction("Recargar", Icons.Outlined.AddCard, Modifier.weight(1f)) { recharge = true }
+                                QuickAction("Recargar", Icons.Outlined.AddCard, Modifier.weight(1f)) { onRechargeDemo() }
                                 QuickAction("Comprar planes", Icons.Outlined.ShoppingBag, Modifier.weight(1f)) { buyPlans = true }
                                 QuickAction("Transferir", Icons.Outlined.Send, Modifier.weight(1f)) { transfer = true }
                             }
                         }
                         item {
                             AttentionCard(DashboardInsights.notices(state.entries, state.selected, now), enabled, now,
-                                onQuery, onRefreshAll, { recharge = true }, { buyPlans = true })
+                                onQuery, onRefreshAll, { onRechargeDemo() }, { buyPlans = true })
                         }
                         item {
                             UsageTrendsCard(DashboardInsights.trends(state.entries, state.selected, now),
@@ -523,17 +522,11 @@ private val Navy = Color(0xFF35234F)
             },
             confirmButton = { TextButton(onClick = { buyPlans = false; onDial("*133#") }) { Text("Abrir menú de planes") } },
             dismissButton = { TextButton(onClick = { buyPlans = false }) { Text("Cancelar") } })
-        com.simple.mobile.presentation.recharge.RechargeDemoDialog(demo, onDemoPin)
-        if (recharge) AlertDialog(onDismissRequest = { recharge = false }, title = { Text("Recarga tu línea") },
-            text = { Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(state.displayLines.firstOrNull { it.subscription == state.selected }?.label ?: "Selecciona la línea que deseas recargar", fontWeight = FontWeight.Bold)
-                com.simple.mobile.presentation.recharge.BankRechargeNotices(state,
-                    onEnabled = { enabled -> model.setBankSms(enabled); if (enabled) onSmsEnabled(true) },
-                    onSync = onRescanSms)
-                HorizontalDivider()
-                Text("El simulador usa un número ficticio, un importe en CUP y el PIN de prueba 1234. No conecta con Transfermóvil ni con tu banco.", fontSize = 13.sp)
-                Button(onClick = { recharge = false; onRechargeDemo() }, modifier = Modifier.fillMaxWidth(), enabled = !state.busy) { Text("Probar recarga dentro de SIMple") }
-            } }, confirmButton = { TextButton(onClick = { recharge = false }) { Text("Cerrar") } })
+        com.simple.mobile.presentation.recharge.RechargeScreen(demo, onDemoPin) { subscription ->
+            com.simple.mobile.presentation.recharge.BankRechargeNotices(state.copy(selected = subscription),
+                onEnabled = { enabled -> model.setBankSms(enabled); if (enabled) onSmsEnabled(true) },
+                onSync = onRescanSms)
+        }
         rename?.let { line ->
             AlertDialog(onDismissRequest = { rename = null }, title = { Text("Nombre de la línea") },
                 text = { OutlinedTextField(value = nickname, onValueChange = { nickname = it.filterNot { c -> c.isISOControl() }.take(40) },

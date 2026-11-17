@@ -307,8 +307,7 @@ notification service.
 
 ## Offline recharge simulator (0.6.2)
 
-**Recargar → Probar recarga dentro de SIMple** opens an in-app, scrollable dialog tied to the
-selected SIM. Choose a simulated bank, fictitious mobile number and positive CUP amount, review,
+**Recargar** opens a dedicated, scrollable full-screen flow tied to the selected SIM, with a close control and a bottom action that stays above the keyboard. The form, review, result and optional bank notices share this screen. Choose a simulated bank, fictitious mobile number and positive CUP amount, review,
 and authenticate with the demo PIN **1234**. The **Datos → Revisar → Resultado** indicator highlights the current step; review groups the amount, fictitious mobile, bank and SIM before confirmation. **Volver a los datos** preserves the reviewed fields for editing. Explicit buttons inject synthetic authentication,
 recharge confirmation/rejection, duplicate confirmation and timeout events. Every screen labels
 this as a simulation; the real request count is always zero. No bank account or real PIN is needed.
@@ -325,14 +324,13 @@ is encrypted separately with Android Keystore AES-GCM. **Nueva prueba** discards
 **Guardar PIN ficticio 1234** stores only that fixed dummy value in a separate AES-GCM vault;
 it cannot save arbitrary user/bank PINs. Android device credentials are required to save or use
 it, with an authentication-bound Keystore key (30-second system authorization window).
-The dialog blocks screenshots, never saves typed PIN input across recreation, and offers
-**Olvidar PIN ficticio**. Devices without a secure screen lock can still type the demo PIN.
+The screen blocks screenshots and never saves typed PIN input across recreation. The review groups PIN status, manual entry, authenticated save/use, and **Eliminar PIN guardado** in one section; other steps retain **Olvidar PIN ficticio**. Devices without a secure screen lock can still type the demo PIN.
 No new SMS permission or banking receiver is added. The former external Transfermóvil launcher
 is replaced by this simulator. The recharge-card and ETECSA website alternatives have been removed from Recargar.
 
 ## Bank recharge responses (0.6.3)
 
-**Recargar → Leer avisos de PAGOxMOVIL** explicitly opts into a separate sender in the existing
+**Recargar → Avisos bancarios → Leer avisos de PAGOxMOVIL** explicitly opts into a separate sender in the existing
 permission-controlled SMS connection. Inbox review and incoming multipart SMS both recognize the
 observed 30-day-quota rejection, including international `53` prefixes, and show the destination,
 quota and exact “after” date inside Recargar. The quota is never treated as a debit or requested
