@@ -329,6 +329,7 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
             try {
                 app.purchases.clearForLine(subscription)
                 app.bankRecharges.clearForLine(subscription)
+                com.simple.mobile.data.recharge.BankPinVault.clear(app, subscription)
                 app.bankNoticeStore.clear(subscription)
                 app.refreshBankNotices()
                 store.clear(subscription)

@@ -147,7 +147,8 @@ import com.simple.mobile.presentation.FlowProgress
                                 OutlinedTextField(pin, { pin = it.filter { c -> c in '0'..'9' }.take(4) }, label = { Text("PIN bancario · 4 dígitos") },
                                     modifier = Modifier.fillMaxWidth(), visualTransformation = PasswordVisualTransformation(),
                                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword), singleLine = true)
-                                Text("El PIN no se guarda. No cambies de banco ni de SIM entre la autenticación y la recarga.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                SavedBankPin(subscription, pin) { pin = it }
+                                Text("El PIN sólo se guarda si lo eliges. No cambies de banco ni de SIM entre la autenticación y la recarga.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             } else {
                                 Text(when(attempt.phase) {
                                     BankPhase.AUTH_SENDING -> "Autenticando en Metropolitano"
