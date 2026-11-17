@@ -21,6 +21,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.SecureFlagPolicy
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.simple.mobile.presentation.FlowProgress
 import com.simple.mobile.domain.recharge.RechargeSimulation as Demo
 
 @Composable fun RechargeScreen(model: RechargeDemoViewModel, onPin: (Boolean, String) -> Unit,
@@ -54,9 +55,9 @@ import com.simple.mobile.domain.recharge.RechargeSimulation as Demo
                         IconButton(onClick = model::close) { Icon(Icons.Outlined.Close, "Cerrar recarga") }
                     }
                 }, bottomBar = {
-                    Surface(color = MaterialTheme.colorScheme.surface) {
+                    Surface(color = MaterialTheme.colorScheme.surface, shadowElevation = 8.dp) {
                         Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                            val button = Modifier.widthIn(max = 560.dp).fillMaxWidth().heightIn(min = 48.dp)
+                            val button = Modifier.widthIn(max = 560.dp).fillMaxWidth().heightIn(min = 52.dp)
                             when {
                                 a == null -> Button(onClick = { focus.clearFocus(); model.prepare(bank, phone, cup) }, modifier = button,
                                     enabled = !state.busy && state.subscription >= 0 && Demo.amount(cup) != null && Regex("5[0-9]{7}").matches(phone)) { Text("Continuar a revisión") }
@@ -72,7 +73,7 @@ import com.simple.mobile.domain.recharge.RechargeSimulation as Demo
                 Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.TopCenter) {
                     Column(Modifier.widthIn(max = 600.dp).fillMaxWidth().verticalScroll(scroll).padding(20.dp),
                         verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                        RechargeSteps(step)
+                        FlowProgress(step, listOf("Prepara tu recarga", "Revisa tu recarga", "Tu resultado"))
                         Text("SIMULACIÓN · No mueve dinero", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
                         Text("No conecta con Transfermóvil ni con un banco. No envía USSD ni SMS. Usa solamente el PIN ficticio 1234.")
                         if (a == null) Text("Línea: ${state.line}", style = MaterialTheme.typography.bodySmall)
@@ -167,26 +168,6 @@ import com.simple.mobile.domain.recharge.RechargeSimulation as Demo
 
 @Composable private fun DemoAction(label: String, busy: Boolean, action: () -> Unit) {
     OutlinedButton(onClick = action, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text(label) }
-}
-
-@Composable private fun RechargeSteps(current: Int) {
-    val labels = listOf("Datos", "Revisar", "Resultado")
-    Column(Modifier.fillMaxWidth().semantics(mergeDescendants = true) {
-        contentDescription = "Paso ${current + 1} de 3: ${labels[current]}"
-        liveRegion = LiveRegionMode.Polite
-    }, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            labels.forEachIndexed { index, label ->
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    HorizontalDivider(thickness = if (index == current) 3.dp else 1.dp,
-                        color = if (index == current) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant)
-                    Text("${index + 1}. $label", style = MaterialTheme.typography.labelMedium,
-                        fontWeight = if (index == current) FontWeight.Bold else FontWeight.Normal,
-                        color = if (index == current) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
-        }
-    }
 }
 
 @Composable private fun RechargeSummaryRow(label: String, value: String) {

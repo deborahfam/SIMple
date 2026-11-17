@@ -9,6 +9,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.automirrored.outlined.ArrowForward
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
@@ -16,6 +18,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.window.DialogWindowProvider
 import androidx.core.view.WindowCompat
@@ -30,6 +33,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.simple.mobile.domain.plans.*
 import com.simple.mobile.presentation.DashboardState
 import com.simple.mobile.presentation.DashboardViewModel
+import com.simple.mobile.presentation.FlowProgress
 import com.simple.mobile.presentation.DetailDisclosure
 
 @Composable fun PlanPurchaseScreen(state: DashboardState, model: DashboardViewModel, onClose: () -> Unit,
@@ -63,42 +67,47 @@ import com.simple.mobile.presentation.DetailDisclosure
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
             Scaffold(Modifier.fillMaxSize().safeDrawingPadding(), contentWindowInsets = WindowInsets(0, 0, 0, 0), topBar = {
                 Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("Comprar planes", modifier = Modifier.weight(1f).semantics { heading() }, style = MaterialTheme.typography.titleLarge)
+                    if (reviewing && attempt == null) {
+                        IconButton(onClick = { reviewing = false }) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Volver a elegir plan") }
+                    }
+                    Text(if (attempt != null) "Tu solicitud" else if (reviewing) "Revisar compra" else "Comprar planes", modifier = Modifier.weight(1f).semantics { heading() }, style = MaterialTheme.typography.titleLarge)
                     IconButton(onClick = onClose) { Icon(Icons.Outlined.Close, "Cerrar planes") }
                 }
             }, bottomBar = {
-                Surface {
-                    Column(Modifier.fillMaxWidth().padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        val button = Modifier.widthIn(max = 560.dp).fillMaxWidth().heightIn(min = 48.dp)
+                Surface(shadowElevation = 8.dp, color = MaterialTheme.colorScheme.surface) {
+                    Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        if (attempt == null) {
+                            Column(Modifier.widthIn(max = 560.dp).fillMaxWidth()) {
+                                Text(if (plan == null) "Elige un plan para continuar" else if (reviewing) "Total a pagar · ${plan.priceCup} CUP" else "${plan.title} · ${plan.priceCup} CUP",
+                                    style = MaterialTheme.typography.titleSmall)
+                                Text(if (reviewing) "Con el saldo principal de tu línea" else "Podrás revisar los detalles antes de comprar",
+                                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                        val button = Modifier.widthIn(max = 560.dp).fillMaxWidth().heightIn(min = 52.dp)
                         when {
                             attempt != null -> OutlinedButton(onClick = onClose, modifier = button) { Text("Volver a mi línea") }
                             !reviewing -> Button(onClick = { reviewing = true }, enabled = plan != null && purchase.ready && !purchase.busy,
-                                modifier = button) { Text("Revisar plan${plan?.let { " · ${it.priceCup} CUP" } ?: ""}") }
+                                modifier = button) { Text("Continuar"); Spacer(Modifier.width(8.dp)); Icon(Icons.AutoMirrored.Outlined.ArrowForward, null, modifier = Modifier.size(18.dp)) }
                             !permitted -> Button(onClick = onPermissions, modifier = button) { Text("Permitir consultas y compras") }
                             else -> Button(onClick = { plan?.let { model.purchasePlan(it.id, subscription) } },
                                 enabled = available && plan != null && purchase.ready && !purchase.busy, modifier = button) {
-                                Text("Confirmar compra · ${plan?.priceCup ?: "—"} CUP")
+                                Text("Confirmar compra")
                             }
                         }
                     }
                 }
             }) { padding ->
                 Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.TopCenter) {
-                    Column(Modifier.widthIn(max = 600.dp).fillMaxWidth().verticalScroll(scroll).padding(20.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
-                        Row(Modifier.fillMaxWidth().semantics { contentDescription = "Paso ${step + 1} de 3" }, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            listOf("Elegir", "Revisar", "Resultado").forEachIndexed { index, text ->
-                                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    HorizontalDivider(thickness = if (index == step) 3.dp else 1.dp,
-                                        color = if (index == step) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant)
-                                    Text(text, style = MaterialTheme.typography.labelLarge, color = if (index == step) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+                    Column(Modifier.widthIn(max = 600.dp).fillMaxWidth().verticalScroll(scroll).padding(horizontal = 20.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                        FlowProgress(step, listOf("Elige tu plan", "Revisa tu compra", "Tu resultado"))
+                        Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.medium) {
+                            Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Icon(Icons.Outlined.SimCard, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text(line?.label ?: "Línea $subscription", style = MaterialTheme.typography.titleSmall)
+                                    Text("Pago con saldo principal", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
-                            }
-                        }
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            Icon(Icons.Outlined.SimCard, null, tint = MaterialTheme.colorScheme.primary)
-                            Column {
-                                Text(line?.label ?: "Línea $subscription", style = MaterialTheme.typography.titleSmall)
-                                Text("Pago con saldo principal", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
                         purchase.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
@@ -137,29 +146,21 @@ import com.simple.mobile.presentation.DetailDisclosure
                                 TextButton(onClick = { model.purchases.acknowledge(); reviewing = false; selectedId = null }, enabled = acknowledged) { Text("Elegir otro plan") }
                             }
                         } else if (!reviewing) {
-                            Text("Internet a tu medida", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
-                            Text("Cuatro opciones para navegar. Los combinados incluyen minutos y mensajes nacionales.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Column(Modifier.selectableGroup(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Text("Conéctate a tu manera", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                                Text("Elige datos o un combinado con minutos y SMS.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            Column(Modifier.selectableGroup(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                                 PlanCatalog.plans.forEach { offer ->
-                                    val selected = offer.id == selectedId
-                                    Surface(shape = MaterialTheme.shapes.large,
-                                        color = if (selected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surface,
-                                        border = BorderStroke(if (selected) 2.dp else 1.dp, if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant)) {
-                                        Column(Modifier.fillMaxWidth().selectable(selected = selected, role = Role.RadioButton,
-                                            onClick = { selectedId = offer.id }).padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                                Column(Modifier.weight(1f)) {
-                                                    Text(if (offer.minutes == 0) "SOLO INTERNET" else "COMBINADO", style = MaterialTheme.typography.labelMedium,
-                                                        color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                                    Text(offer.data, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
-                                                }
-                                                RadioButton(selected = selected, onClick = null)
-                                            }
-                                            Text(offer.resources, style = MaterialTheme.typography.bodyLarge)
-                                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                                            Text("${offer.priceCup} CUP", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-                                            Text("+ 300 MB nacionales · 35 días desde el primer uso", style = MaterialTheme.typography.bodySmall)
-                                        }
+                                    PlanOption(offer, selected = offer.id == selectedId, onSelect = { selectedId = offer.id })
+                                }
+                            }
+                            Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.medium) {
+                                Row(Modifier.fillMaxWidth().padding(14.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    Icon(Icons.Outlined.Info, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        Text("Incluido en todos los planes", style = MaterialTheme.typography.labelLarge)
+                                        Text("300 MB de navegación nacional y 35 días de vigencia desde el primer uso.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     }
                                 }
                             }
@@ -181,15 +182,57 @@ import com.simple.mobile.presentation.DetailDisclosure
     }
 }
 
+@Composable private fun PlanOption(plan: MobilePlan, selected: Boolean, onSelect: () -> Unit) {
+    val largeText = LocalConfiguration.current.fontScale > 1.2f
+    Surface(shape = MaterialTheme.shapes.large,
+        color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
+        border = BorderStroke(if (selected) 2.dp else 1.dp,
+            if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant)) {
+        Column(Modifier.fillMaxWidth().selectable(selected = selected, role = Role.RadioButton, onClick = onSelect)
+            .padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(if (plan.minutes == 0) "SOLO INTERNET" else "DATOS + MINUTOS + SMS",
+                    modifier = Modifier.weight(1f), style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Icon(if (selected) Icons.Outlined.CheckCircle else Icons.Outlined.RadioButtonUnchecked,
+                    contentDescription = null, tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                    modifier = Modifier.size(22.dp))
+            }
+            if (largeText) {
+                PlanData(plan)
+                PlanPrice(plan)
+            } else {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                    PlanData(plan)
+                    PlanPrice(plan)
+                }
+            }
+            Text(if (plan.minutes == 0) "Para navegar y usar tus apps" else "${plan.minutes} min nacionales  ·  ${plan.sms} SMS",
+                style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+@Composable private fun PlanData(plan: MobilePlan) {
+    Text(plan.data, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+}
+
+@Composable private fun PlanPrice(plan: MobilePlan) {
+    Text("${plan.priceCup} CUP", style = MaterialTheme.typography.titleMedium,
+        fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+}
+
 @Composable private fun PlanSummary(plan: MobilePlan) {
-    Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = MaterialTheme.shapes.large) {
-        Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text(plan.title, style = MaterialTheme.typography.titleLarge)
-            Text("${plan.priceCup} CUP", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.SemiBold)
-            HorizontalDivider()
-            Text(plan.resources)
-            Text("+ 300 MB para navegación nacional")
+    Surface(color = MaterialTheme.colorScheme.primaryContainer, shape = MaterialTheme.shapes.extraLarge) {
+        Column(Modifier.fillMaxWidth().padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(if (plan.minutes == 0) "TU PLAN DE INTERNET" else "TU PLAN COMBINADO",
+                style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onPrimaryContainer)
+            Text(plan.data, style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Bold)
+            if (plan.minutes > 0) Text("${plan.minutes} minutos nacionales · ${plan.sms} SMS")
+            HorizontalDivider(color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.2f))
+            Text("+ 300 MB de navegación nacional", style = MaterialTheme.typography.bodyMedium)
             Text("35 días desde el primer uso", style = MaterialTheme.typography.bodyMedium)
+            Text("${plan.priceCup} CUP", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
         }
     }
 }
