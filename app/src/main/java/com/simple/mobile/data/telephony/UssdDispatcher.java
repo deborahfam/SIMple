@@ -72,6 +72,29 @@ public final class UssdDispatcher {
         return result;
     }
 
+    /** Only explicitly confirmed Metropolitano operations; never accepts arbitrary banking codes. */
+    public CompletableFuture<String> authenticateMetropolitano(int subscriptionId, char[] pin) {
+        CompletableFuture<String> result = new CompletableFuture<>();
+        try {
+            String code = com.simple.mobile.domain.recharge.MetropolitanoProtocol.authenticate(pin);
+            handler.post(() -> dispatch(subscriptionId, code, result));
+        } catch (IllegalArgumentException ignored) {
+            result.completeExceptionally(new IllegalArgumentException("Invalid authentication"));
+        } finally { java.util.Arrays.fill(pin, '\0'); }
+        return result;
+    }
+
+    public CompletableFuture<String> rechargeMetropolitano(int subscriptionId, String phone, String cup) {
+        CompletableFuture<String> result = new CompletableFuture<>();
+        try {
+            String code = com.simple.mobile.domain.recharge.MetropolitanoProtocol.recharge(phone, cup);
+            handler.post(() -> dispatch(subscriptionId, code, result));
+        } catch (IllegalArgumentException ignored) {
+            result.completeExceptionally(new IllegalArgumentException("Invalid recharge"));
+        }
+        return result;
+    }
+
     private void dispatch(int subscriptionId, String code, CompletableFuture<String> result) {
         if (result.isDone()) return;
         if (busy) { fail(result, Failure.BUSY); return; }

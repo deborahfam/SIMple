@@ -35,6 +35,24 @@ class SimpleApplication : Application() {
             result
         }
     }
+    val bankRecharges by lazy {
+        com.simple.mobile.domain.recharge.BankRechargeController(
+            com.simple.mobile.data.recharge.BankRechargeStore(this), worker,
+            { sub, pin -> bankResult(ussd.authenticateMetropolitano(sub, pin)) },
+            { sub, phone, cup -> bankResult(ussd.rechargeMetropolitano(sub, phone, cup)) })
+    }
+    private fun bankResult(source: java.util.concurrent.CompletableFuture<String>): java.util.concurrent.CompletableFuture<String> {
+        val result = java.util.concurrent.CompletableFuture<String>()
+        source.whenComplete { reply, error ->
+            val failure = (error as? UssdDispatcher.QueryException)?.failure
+            if (error == null) result.complete(reply)
+            else if (failure in setOf(UssdDispatcher.Failure.PERMISSION, UssdDispatcher.Failure.INACTIVE_SIM,
+                    UssdDispatcher.Failure.WRONG_CARRIER, UssdDispatcher.Failure.BUSY))
+                result.completeExceptionally(com.simple.mobile.domain.recharge.BankNotSentException())
+            else result.completeExceptionally(error)
+        }
+        return result
+    }
     override fun onCreate() {
         super.onCreate()
         worker.execute { reconcileReminders(); refreshBankNotices() }

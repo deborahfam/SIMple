@@ -57,8 +57,7 @@ private val Teal: Color @Composable get() = if (isSystemInDarkTheme()) Color(0xF
 private val Navy = Color(0xFF35234F)
 
 @Composable fun Dashboard(model: DashboardViewModel, updates: com.simple.mobile.data.updates.AppUpdates, onInstallUpdate: () -> Unit, onConnect: () -> Unit,
-    demo: com.simple.mobile.presentation.recharge.RechargeDemoViewModel, onDemoPin: (Boolean, String) -> Unit,
-    onQuery: (CubacelQuery) -> Unit, onRefreshAll: () -> Unit, onRefreshNeeded: () -> Unit, onRetryQueries: () -> Unit, onRechargeDemo: () -> Unit, onRescanSms: () -> Unit, onReminders: (Boolean) -> Unit, onNotificationSettings: () -> Unit, onSmsEnabled: (Boolean) -> Unit, onSyncSms: () -> Unit, onSettings: () -> Unit, onAppSettings: () -> Unit,
+    onQuery: (CubacelQuery) -> Unit, onRefreshAll: () -> Unit, onRefreshNeeded: () -> Unit, onRetryQueries: () -> Unit, onRescanSms: () -> Unit, onReminders: (Boolean) -> Unit, onNotificationSettings: () -> Unit, onSmsEnabled: (Boolean) -> Unit, onSyncSms: () -> Unit, onSettings: () -> Unit, onAppSettings: () -> Unit,
     onPickContact: () -> Unit,
     onTransfer: (com.simple.mobile.domain.transfer.TransferDraft) -> Boolean) {
     val state by model.state.collectAsStateWithLifecycle()
@@ -83,6 +82,8 @@ private val Navy = Color(0xFF35234F)
     val statisticsScroll = rememberLazyListState()
     val settingsScroll = rememberLazyListState()
     var showPackages by rememberSaveable(state.selected) { mutableStateOf(false) }
+    var rechargeOpen by rememberSaveable { mutableStateOf(false) }
+    val onRecharge = { rechargeOpen = true }
     var buyPlans by rememberSaveable { mutableStateOf(false) }
     var transfer by rememberSaveable { mutableStateOf(false) }
     var delete by remember { mutableStateOf(false) }
@@ -353,14 +354,14 @@ private val Navy = Color(0xFF35234F)
                         }
                         item {
                             FlowRow(maxItemsInEachRow = if (stacked) 1 else 3, horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                QuickAction("Recargar", Icons.Outlined.AddCard, Modifier.weight(1f)) { onRechargeDemo() }
+                                QuickAction("Recargar", Icons.Outlined.AddCard, Modifier.weight(1f)) { onRecharge() }
                                 QuickAction("Comprar planes", Icons.Outlined.ShoppingBag, Modifier.weight(1f)) { buyPlans = true }
                                 QuickAction("Transferir", Icons.Outlined.Send, Modifier.weight(1f)) { transfer = true }
                             }
                         }
                         item {
                             AttentionCard(DashboardInsights.notices(state.entries, state.selected, now), enabled, now,
-                                onQuery, onRefreshAll, { onRechargeDemo() }, { buyPlans = true })
+                                onQuery, onRefreshAll, { onRecharge() }, { buyPlans = true })
                         }
                         item {
                             RechargeAvailability(entries.firstOrNull { it.reading.query() == CubacelQuery.RECHARGE_STATUS }?.reading, enabled, now, state.isQuerying(CubacelQuery.RECHARGE_STATUS)) {
@@ -546,7 +547,7 @@ private val Navy = Color(0xFF35234F)
         if (transfer) TransferPanel(state, model, onPickContact, onTransfer) { transfer = false }
         if (buyPlans) com.simple.mobile.presentation.plans.PlanPurchaseScreen(state, model,
             onClose = { buyPlans = false }, onPermissions = onConnect, onRefresh = onRefreshAll)
-        com.simple.mobile.presentation.recharge.RechargeScreen(demo, onDemoPin) { subscription ->
+        if (rechargeOpen) com.simple.mobile.presentation.recharge.RechargeScreen(state, onClose = { rechargeOpen = false }, onPermissions = onConnect) { subscription ->
             com.simple.mobile.presentation.recharge.BankRechargeNotices(state.copy(selected = subscription),
                 onEnabled = { enabled -> model.setBankSms(enabled); if (enabled) onSmsEnabled(true) },
                 onSync = onRescanSms)

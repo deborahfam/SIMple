@@ -31,7 +31,7 @@ update the app in place while preserving saved readings and recipients. Do not u
 - **Actualizar todo** queries balance, data, minutes, SMS, bonuses and recharge status sequentially
   on the selected SIM, with category progress. **Detener** skips pending queries while allowing
   the in-flight response to be saved. Any query or storage failure stops the sequence without retries.
-- Plan purchases use a separate allowlisted native USSD action. Recargar contains the in-app recharge simulator and optional bank response reading.
+- Plan purchases use a separate allowlisted native USSD action. Recargar uses native Metropolitano authentication and recharge requests, with optional bank response reading.
 - Optional sender-filtered SMS import and new-message ingestion after Android permissions.
 - Optional single-contact picker without address-book permission. Saved recipients and transfer preparation records remain encrypted locally.
 - No contacts or identifier permissions; no telemetry or raw carrier logs. Internet is used only for GitHub update checks (manual or optional once daily on app open) and user-requested APK downloads.
@@ -304,28 +304,27 @@ notification service.
   History reads reuse one Keystore key handle and update recovery flags only when needed.
   SIM/history filters reuse the in-memory readings; empty SMS syncs do not reload all history.
 
-## Offline recharge simulator (0.6.2)
+## Metropolitano recharge inside SIMple
 
-**Recargar** opens a dedicated, scrollable full-screen flow tied to the selected SIM, with a close control and a bottom action that stays above the keyboard. The form, review, result and optional bank notices share this screen. Choose a simulated bank, fictitious mobile number and positive CUP amount, review,
-and authenticate with the demo PIN **1234**. The **Datos → Revisar → Resultado** indicator highlights the current step; review groups the amount, fictitious mobile, bank and SIM before confirmation. **Volver a los datos** preserves the reviewed fields for editing. Explicit buttons inject synthetic authentication,
-recharge confirmation/rejection, duplicate confirmation and timeout events. Every screen labels
-this as a simulation; the real request count is always zero. No bank account or real PIN is needed.
+**Recargar** uses a full-screen step flow: bank, destination/amount, review/authentication,
+and request result. It sends native USSD on the selected active Cubacel SIM. This is a real
+bank operation, not the former simulator. Only Metropolitano's associated CUP account and
+integer amounts from 1 to 360 CUP are supported; the operator enforces available quota.
 
-The simulator has no network, USSD or SMS transport and does not read bank messages. Its
-`SIMPLE-DEMO` fixtures are not Transfermóvil protocol samples. Successful simulation does not
-validate compatibility with a bank. Real recharge integration remains unimplemented.
+Authentication and debit require separate actions. The user enters the four-digit bank PIN,
+then checks the PAGOxMOVIL authentication confirmation before explicitly confirming the
+reviewed amount and destination. Review expires after five minutes. The PIN is not persisted;
+the screen blocks screenshots. Each intent is encrypted with Android Keystore before dispatch.
+Restarts and uncertain responses never trigger a retry. A USSD response is displayed verbatim
+and is not interpreted as payment success or a reason to deduct a local balance.
 
-Matching requires the same attempt, SIM, bank, phone, amount, sender and five-minute time window.
-Authentication can produce at most one simulated send. Missing confirmation remains uncertain,
-without automatic retry; restoring the app never repeats authentication or sends. The last trial
-is encrypted separately with Android Keystore AES-GCM. **Nueva prueba** discards only that trial.
-
-**Guardar PIN ficticio 1234** stores only that fixed dummy value in a separate AES-GCM vault;
-it cannot save arbitrary user/bank PINs. Android device credentials are required to save or use
-it, with an authentication-bound Keystore key (30-second system authorization window).
-The screen blocks screenshots and never saves typed PIN input across recreation. The review groups PIN status, manual entry, authenticated save/use, and **Eliminar PIN guardado** in one section; other steps retain **Olvidar PIN ficticio**. Devices without a secure screen lock can still type the demo PIN.
-No new SMS permission or banking receiver is added. The former external Transfermóvil launcher
-is replaced by this simulator. The recharge-card and ETECSA website alternatives have been removed from Recargar.
+The numeric encoding was checked offline against 600 vectors from the unmodified codec in
+[ETECSA's official Transfermóvil 1.260416 APK](https://www.etecsa.cu/es/aplicaciones/transfermovil),
+covering all 100 random seeds. Reference APK SHA-256:
+`b18475eb6911209d21e99d72e6ca888b29236a5b1e470acc70238e05a44f160a`.
+These tests verify encoding, not bank acceptance. No live bank authentication or recharge
+was performed during development validation. The bank protocol can change independently.
+Legacy simulator classes remain as isolated test fixtures and have no screen entry point.
 
 ## Bank recharge responses (0.6.3)
 

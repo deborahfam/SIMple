@@ -1,178 +1,191 @@
 package com.simple.mobile.presentation.recharge
 
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.ui.Modifier
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Close
-import androidx.compose.material.icons.outlined.Lock
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.semantics.*
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.SecureFlagPolicy
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.simple.mobile.SimpleApplication
+import com.simple.mobile.domain.recharge.*
+import com.simple.mobile.presentation.DashboardState
 import com.simple.mobile.presentation.FlowProgress
-import com.simple.mobile.domain.recharge.RechargeSimulation as Demo
 
-@Composable fun RechargeScreen(model: RechargeDemoViewModel, onPin: (Boolean, String) -> Unit,
+@Composable fun RechargeScreen(dashboard: DashboardState, onClose: () -> Unit, onPermissions: () -> Unit,
     bankNotices: @Composable (Int) -> Unit) {
-    val state by model.state.collectAsStateWithLifecycle()
-    if (!state.open) return
-    var bank by remember { mutableStateOf(Demo.Bank.METRO) }
-    var phone by remember { mutableStateOf("55500000") }
-    var cup by remember { mutableStateOf("") }
-    var pin by remember(state.attempt?.id, state.attempt?.phase) { mutableStateOf("") }
+    val context = LocalContext.current
+    val controller = (context.applicationContext as SimpleApplication).bankRecharges
+    val state by controller.state.collectAsStateWithLifecycle()
+    val attempt = state.attempt
+    val initialSub by rememberSaveable { mutableIntStateOf(dashboard.selected) }
+    val subscription = attempt?.subscription ?: initialSub
+    val line = attempt?.line ?: dashboard.displayLines.firstOrNull { it.subscription == subscription }?.label.orEmpty()
+    var formStep by rememberSaveable { mutableIntStateOf(0) }
+    var phone by rememberSaveable { mutableStateOf("") }
+    var cup by rememberSaveable { mutableStateOf("") }
+    var pin by remember(attempt?.id) { mutableStateOf("") }
+    var authConfirmed by remember(attempt?.id) { mutableStateOf(false) }
+    var outcomeReviewed by remember(attempt?.id) { mutableStateOf(false) }
+    val eligible = dashboard.lines.any { it.subscription == subscription && it.active && it.cubacel }
+    val permitted = dashboard.permission && context.checkSelfPermission(Manifest.permission.CALL_PHONE) == PackageManager.PERMISSION_GRANTED
+    val available = eligible && permitted && dashboard.storageReady && !dashboard.busy && !dashboard.managingLine && !dashboard.transferSaving
+    val debitPhase = attempt?.phase in setOf(BankPhase.SENDING, BankPhase.RESPONSE, BankPhase.UNKNOWN)
+    val step = if (debitPhase) 3 else if (attempt != null) 2 else formStep
     val scroll = rememberScrollState()
-    val a = state.attempt
-    val step = when (a?.phase) {
-        null -> 0
-        Demo.Phase.REVIEW, Demo.Phase.AUTH_PENDING -> 1
-        else -> 2
-    }
-    Dialog(onDismissRequest = model::close,
-        properties = DialogProperties(securePolicy = SecureFlagPolicy.SecureOn,
-            usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
+    Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false,
+        decorFitsSystemWindows = false, securePolicy = SecureFlagPolicy.SecureOn)) {
         val focus = LocalFocusManager.current
-        LaunchedEffect(a?.id, a?.phase) { scroll.scrollTo(0); focus.clearFocus() }
+        LaunchedEffect(step, attempt?.phase) { scroll.scrollTo(0); focus.clearFocus() }
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-            Scaffold(modifier = Modifier.fillMaxSize().safeDrawingPadding().imePadding(),
-                contentWindowInsets = WindowInsets(0, 0, 0, 0),
+            Scaffold(Modifier.fillMaxSize().safeDrawingPadding().imePadding(), contentWindowInsets = WindowInsets(0, 0, 0, 0),
                 topBar = {
-                    Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically) {
-                        Text("Recargar", style = MaterialTheme.typography.titleLarge,
-                            modifier = Modifier.weight(1f).semantics { heading() })
-                        IconButton(onClick = model::close) { Icon(Icons.Outlined.Close, "Cerrar recarga") }
+                    Row(Modifier.fillMaxWidth().padding(start = 12.dp, end = 8.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        if (attempt == null && formStep > 0) IconButton(onClick = { pin = ""; formStep-- }, enabled = !state.busy) {
+                            Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Volver al paso anterior")
+                        }
+                        Text("Recargar", modifier = Modifier.weight(1f).padding(start = 8.dp).semantics { heading() }, style = MaterialTheme.typography.titleLarge)
+                        IconButton(onClick = { pin = ""; onClose() }) { Icon(Icons.Outlined.Close, "Cerrar recarga") }
                     }
                 }, bottomBar = {
                     Surface(color = MaterialTheme.colorScheme.surface, shadowElevation = 8.dp) {
-                        Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp), horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Column(Modifier.widthIn(max = 560.dp).fillMaxWidth()) {
+                                Text("Metropolitano · cuenta CUP asociada", style = MaterialTheme.typography.titleSmall)
+                                Text(attempt?.let { "${it.cup} CUP para +53 ${it.phone}" } ?: "${MetropolitanoProtocol.amount(cup)?.let { "$it CUP" } ?: "Prepara tu recarga"}",
+                                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
                             val button = Modifier.widthIn(max = 560.dp).fillMaxWidth().heightIn(min = 52.dp)
                             when {
-                                a == null -> Button(onClick = { focus.clearFocus(); model.prepare(bank, phone, cup) }, modifier = button,
-                                    enabled = !state.busy && state.subscription >= 0 && Demo.amount(cup) != null && Regex("5[0-9]{7}").matches(phone)) { Text("Continuar a revisión") }
-                                a.phase == Demo.Phase.REVIEW -> Button(onClick = {
-                                    focus.clearFocus()
-                                    val value = pin; pin = ""; model.authenticate(value)
-                                }, modifier = button, enabled = !state.busy && pin.length == 4) { Text("Confirmar prueba con PIN") }
-                                else -> OutlinedButton(onClick = model::close, modifier = button) { Text("Volver a mi línea") }
+                                state.busy -> Button(onClick = {}, enabled = false, modifier = button) { Text("Esperando respuesta…") }
+                                attempt == null && formStep < 2 -> Button(onClick = { focus.clearFocus(); formStep++ }, modifier = button,
+                                    enabled = state.ready && (formStep == 0 || (MetropolitanoProtocol.phone(phone) != null && MetropolitanoProtocol.amount(cup) != null))) { Text("Continuar") }
+                                !permitted && (attempt == null || attempt.phase == BankPhase.AUTH_RESPONSE) -> Button(onClick = onPermissions, modifier = button) { Text("Permitir acceso al teléfono") }
+                                attempt == null -> Button(onClick = {
+                                    val value = pin.toCharArray(); pin = ""; focus.clearFocus()
+                                    controller.authenticate(subscription, line, phone.trim(), MetropolitanoProtocol.amount(cup)!!, value)
+                                }, modifier = button, enabled = available && state.ready && MetropolitanoProtocol.validPin(pin.toCharArray())) { Text("Autenticar en Metropolitano") }
+                                attempt.phase == BankPhase.AUTH_RESPONSE -> Button(onClick = { controller.confirm(attempt.id, authConfirmed) },
+                                    modifier = button, enabled = available && authConfirmed && state.ready) { Text("Confirmar recarga · ${attempt.cup} CUP") }
+                                else -> OutlinedButton(onClick = onClose, modifier = button) { Text("Volver a mi línea") }
                             }
                         }
                     }
                 }) { padding ->
                 Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.TopCenter) {
-                    Column(Modifier.widthIn(max = 600.dp).fillMaxWidth().verticalScroll(scroll).padding(20.dp),
-                        verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                        FlowProgress(step, listOf("Prepara tu recarga", "Revisa tu recarga", "Tu resultado"))
-                        Text("SIMULACIÓN · No mueve dinero", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
-                        Text("No conecta con Transfermóvil ni con un banco. No envía USSD ni SMS. Usa solamente el PIN ficticio 1234.")
-                        if (a == null) Text("Línea: ${state.line}", style = MaterialTheme.typography.bodySmall)
-                        if (a == null) {
-                            Text("Banco de prueba")
-                            Demo.Bank.entries.forEach { choice ->
-                                FilterChip(selected = bank == choice, onClick = { bank = choice }, label = { Text(choice.label) }, enabled = !state.busy)
-                            }
-                            OutlinedTextField(phone, { phone = it.filter(Char::isDigit).take(8) }, label = { Text("Número ficticio") }, modifier = Modifier.fillMaxWidth(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone), singleLine = true)
-                            OutlinedTextField(cup, { cup = it.take(12) }, label = { Text("Importe de prueba · CUP") }, modifier = Modifier.fillMaxWidth(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), singleLine = true)
-                            if (state.subscription < 0) Text("Selecciona una SIM para iniciar la prueba.")
-                        } else {
-                            Surface(color = MaterialTheme.colorScheme.surfaceVariant, shape = MaterialTheme.shapes.medium) {
-                                Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    Text("${a.cup} CUP", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
-                                    RechargeSummaryRow("Móvil ficticio", a.phone)
-                                    RechargeSummaryRow("Banco de prueba", a.bank.label)
-                                    RechargeSummaryRow("Línea", a.line)
+                    Column(Modifier.widthIn(max = 600.dp).fillMaxWidth().verticalScroll(scroll).padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                        FlowProgress(step, listOf("Tu banco", "Número e importe", "Revisa y confirma", "Tu solicitud"))
+                        if (!state.ready && state.error == null) LinearProgressIndicator(Modifier.fillMaxWidth())
+                        state.error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }) }
+                        if (!eligible) Text("Selecciona en Inicio la SIM Cubacel registrada en Metropolitano.", color = MaterialTheme.colorScheme.error)
+                        if (!dashboard.storageReady) Text("Reintenta el almacenamiento desde Ajustes antes de recargar.", color = MaterialTheme.colorScheme.error)
+                        if (dashboard.busy) Text("Espera a que termine la consulta de tu línea.")
+                        if (attempt == null && formStep == 0) {
+                            Text("Recarga desde tu banco", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                            Surface(color = MaterialTheme.colorScheme.primaryContainer, shape = MaterialTheme.shapes.large,
+                                border = BorderStroke(2.dp, MaterialTheme.colorScheme.primary)) {
+                                Row(Modifier.fillMaxWidth().padding(20.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                                    Icon(Icons.Outlined.AccountBalance, null, tint = MaterialTheme.colorScheme.primary)
+                                    Column(Modifier.weight(1f)) {
+                                        Text("Metropolitano", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                                        Text("Cuenta CUP asociada a tu línea", style = MaterialTheme.typography.bodySmall)
+                                    }
+                                    Icon(Icons.Outlined.CheckCircle, null, tint = MaterialTheme.colorScheme.primary)
                                 }
                             }
-                            Text(when (a.phase) {
-                                Demo.Phase.REVIEW -> "Revisa la línea, el número ficticio y el importe."
-                                Demo.Phase.AUTH_PENDING -> "Esperando autenticación simulada. Elige una respuesta abajo."
-                                Demo.Phase.RESULT_PENDING -> "Autenticación simulada correcta. Recarga simulada enviada una sola vez."
-                                Demo.Phase.SUCCESS -> "Prueba completada. No se ha recargado saldo real."
-                                Demo.Phase.AUTH_REJECTED -> "Autenticación simulada rechazada. No se simuló ningún envío."
-                                Demo.Phase.REJECTED -> "Recarga simulada rechazada."
-                                Demo.Phase.EXPIRED -> "Sesión de prueba vencida. No se simuló ningún envío."
-                                Demo.Phase.UNCERTAIN -> "Sin confirmación. No se repetirá la operación. Puedes simular una respuesta tardía durante los 5 minutos de esta prueba."
-                            })
-                            Text("Solicitudes reales: 0 · Envíos simulados: ${a.simulatedSends}")
-                            if (a.phase == Demo.Phase.REVIEW) {
-                                Surface(color = MaterialTheme.colorScheme.surfaceVariant, shape = MaterialTheme.shapes.medium) {
-                                    Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                            Icon(Icons.Outlined.Lock, null)
-                                            Text("PIN de prueba", style = MaterialTheme.typography.titleMedium)
-                                        }
-                                        Text(if (state.savedPin) "PIN ficticio guardado en este dispositivo" else "Sin PIN guardado",
-                                            style = MaterialTheme.typography.bodySmall)
-                                        OutlinedTextField(pin, { pin = it.filter(Char::isDigit).take(4) },
-                                            label = { Text("PIN ficticio: 1234") }, visualTransformation = PasswordVisualTransformation(),
-                                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
-                                            enabled = !state.busy, singleLine = true, modifier = Modifier.fillMaxWidth())
-                                        if (state.savedPin) {
-                                            OutlinedButton(onClick = { focus.clearFocus(); pin = ""; onPin(false, a.id) }, enabled = !state.busy,
-                                                modifier = Modifier.fillMaxWidth()) { Text("Usar PIN guardado") }
-                                            TextButton(onClick = model::forgetPin, enabled = !state.busy) { Text("Eliminar PIN guardado") }
-                                        } else {
-                                            OutlinedButton(onClick = { focus.clearFocus(); pin = ""; onPin(true, a.id) }, enabled = !state.busy,
-                                                modifier = Modifier.fillMaxWidth()) { Text("Guardar PIN ficticio 1234") }
-                                        }
-                                        Text("Android pide desbloquear el dispositivo para guardar o usar el PIN ficticio. Solo se guarda 1234.",
-                                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("Necesitas tener el servicio bancario registrado en esta SIM. SIMple enviará las solicitudes por USSD desde tu teléfono.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("Línea: ${line.ifBlank { "Sin SIM seleccionada" }}", style = MaterialTheme.typography.titleSmall)
+                            Text("BPA y BANDEC aún no están disponibles.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        } else if (attempt == null && formStep == 1) {
+                            Text("¿A qué móvil recargas?", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                            OutlinedTextField(phone, { phone = it.filter { c -> c in '0'..'9' }.take(8) }, modifier = Modifier.fillMaxWidth(),
+                                label = { Text("Número Cubacel") }, prefix = { Text("+53 ") }, supportingText = { Text("8 dígitos, empieza por 5") },
+                                isError = phone.isNotEmpty() && MetropolitanoProtocol.phone(phone) == null,
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone), singleLine = true)
+                            OutlinedTextField(cup, { cup = it.take(8) }, modifier = Modifier.fillMaxWidth(), label = { Text("Importe") }, suffix = { Text("CUP") },
+                                supportingText = { Text("De 1 a 360 CUP, sin decimales") }, isError = cup.isNotEmpty() && MetropolitanoProtocol.amount(cup) == null,
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), singleLine = true)
+                            Text("El operador comprobará el límite de recarga disponible del número de destino.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        } else {
+                            Surface(color = MaterialTheme.colorScheme.primaryContainer, shape = MaterialTheme.shapes.extraLarge) {
+                                Column(Modifier.fillMaxWidth().padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                    Text("TU RECARGA", style = MaterialTheme.typography.labelLarge)
+                                    Text("${attempt?.cup ?: MetropolitanoProtocol.amount(cup)} CUP", style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Bold)
+                                    Text("Para +53 ${attempt?.phone ?: phone}", style = MaterialTheme.typography.titleMedium)
+                                    HorizontalDivider(color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.2f))
+                                    Text("Metropolitano · cuenta CUP asociada")
+                                    Text("Desde $line", style = MaterialTheme.typography.bodySmall)
+                                }
+                            }
+                            if (attempt == null) {
+                                Text("Primero, autentícate", style = MaterialTheme.typography.titleLarge)
+                                Text("La autenticación no envía la recarga. Después revisarás la respuesta y confirmarás el cargo.")
+                                OutlinedTextField(pin, { pin = it.filter { c -> c in '0'..'9' }.take(4) }, label = { Text("PIN bancario · 4 dígitos") },
+                                    modifier = Modifier.fillMaxWidth(), visualTransformation = PasswordVisualTransformation(),
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword), singleLine = true)
+                                Text("El PIN no se guarda. No cambies de banco ni de SIM entre la autenticación y la recarga.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            } else {
+                                Text(when(attempt.phase) {
+                                    BankPhase.AUTH_SENDING -> "Autenticando en Metropolitano"
+                                    BankPhase.AUTH_RESPONSE -> "Comprueba la autenticación"
+                                    BankPhase.AUTH_UNKNOWN -> "Autenticación sin confirmar"
+                                    BankPhase.AUTH_REQUIRED -> "Vuelve a autenticarte"
+                                    BankPhase.SENDING -> "Enviando tu solicitud"
+                                    BankPhase.RESPONSE -> "Respuesta a la solicitud"
+                                    BankPhase.UNKNOWN -> "Resultado sin confirmar"
+                                    BankPhase.NOT_SENT -> "La solicitud no se envió"
+                                }, style = MaterialTheme.typography.titleLarge, modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
+                                if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+                                state.response?.let { reply ->
+                                    Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.large) {
+                                        Text(reply, Modifier.fillMaxWidth().padding(16.dp))
                                     }
                                 }
-                            }
-                            if (a.phase == Demo.Phase.AUTH_PENDING) {
-                                DemoAction("Simular autenticación correcta", state.busy) { model.message(Demo.Kind.AUTH_OK) }
-                                DemoAction("Simular PIN rechazado", state.busy) { model.message(Demo.Kind.AUTH_REJECTED) }
-                                DemoAction("Simular sesión vencida", state.busy) { model.message(Demo.Kind.SESSION_EXPIRED) }
-                            }
-                            if (a.phase in setOf(Demo.Phase.RESULT_PENDING, Demo.Phase.UNCERTAIN)) {
-                                DemoAction("Simular confirmación", state.busy) { model.message(Demo.Kind.RECHARGE_OK) }
-                                DemoAction("Simular rechazo de recarga", state.busy) { model.message(Demo.Kind.RECHARGE_REJECTED) }
-                            }
-                            if (a.phase in setOf(Demo.Phase.AUTH_PENDING, Demo.Phase.RESULT_PENDING)) DemoAction("Simular demora", state.busy, model::timeout)
-                            if (a.phase == Demo.Phase.SUCCESS) {
-                                Text("Mensaje ficticio: ${Demo.SENDER}\nReferencia: ${a.resultReference}")
-                                DemoAction("Repetir confirmación (duplicada)", state.busy) { model.message(Demo.Kind.RECHARGE_OK) }
-                            }
-                            DemoAction(if (a.phase == Demo.Phase.REVIEW) "Volver a los datos" else "Nueva prueba", state.busy) {
-                                if (a.phase == Demo.Phase.REVIEW) { bank = a.bank; phone = a.phone; cup = a.cup }
-                                model.reset()
+                                if (attempt.phase == BankPhase.AUTH_RESPONSE) {
+                                    Text("Revisa el SMS de PAGOxMOVIL: debe confirmar la autenticación en Metropolitano de esta línea. Una respuesta USSD por sí sola no la confirma.")
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Checkbox(authConfirmed, { authConfirmed = it })
+                                        Text("He recibido la confirmación de autenticación de Metropolitano.", style = MaterialTheme.typography.bodyMedium)
+                                    }
+                                    Text("Al confirmar se enviará una única solicitud de ${attempt.cup} CUP. La revisión vence a los 5 minutos.", style = MaterialTheme.typography.bodySmall)
+                                } else if (debitPhase) {
+                                    Text("Comprueba el SMS y los recursos del móvil de destino. Recibir una respuesta no garantiza que la recarga se completó. No repitas el pago si el resultado es incierto.")
+                                } else if (!state.busy) {
+                                    Text("No se ha enviado ninguna recarga. Revisa los permisos, la SIM y el SMS del banco antes de iniciar otra autenticación.")
+                                }
+                                if (!state.busy) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Checkbox(outcomeReviewed, { outcomeReviewed = it })
+                                        Text(if (debitPhase) "He revisado el resultado antes de iniciar otra recarga." else "He revisado la respuesta y quiero cerrar esta solicitud.", style = MaterialTheme.typography.bodySmall)
+                                    }
+                                    TextButton(onClick = { controller.acknowledge(); formStep = 0; pin = ""; authConfirmed = false }, enabled = outcomeReviewed) { Text("Nueva recarga") }
+                                }
                             }
                         }
-                        if (state.savedPin && a?.phase != Demo.Phase.REVIEW) DemoAction("Olvidar PIN ficticio", state.busy, model::forgetPin)
-                        state.error?.let {
-                            Text(it, color = MaterialTheme.colorScheme.error)
-                            if (a == null) DemoAction("Descartar prueba guardada", state.busy, model::reset)
-                            if (!state.savedPin) DemoAction("Restablecer almacén de PIN ficticio", state.busy, model::forgetPin)
-                        }
-                        if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
-                        HorizontalDivider()
-                        bankNotices(a?.subscription ?: state.subscription)
+                        bankNotices(subscription)
                     }
                 }
             }
         }
-    }
-}
-
-@Composable private fun DemoAction(label: String, busy: Boolean, action: () -> Unit) {
-    OutlinedButton(onClick = action, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text(label) }
-}
-
-@Composable private fun RechargeSummaryRow(label: String, value: String) {
-    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(value, style = MaterialTheme.typography.bodyLarge)
     }
 }

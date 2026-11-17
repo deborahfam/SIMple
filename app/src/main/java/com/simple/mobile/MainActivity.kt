@@ -21,32 +21,6 @@ import com.simple.mobile.presentation.Dashboard
 import com.simple.mobile.presentation.DashboardViewModel
 
 class MainActivity : ComponentActivity() {
-    private lateinit var demo: com.simple.mobile.presentation.recharge.RechargeDemoViewModel
-    private var pendingDemoPin: Pair<Boolean, String>? = null
-    private val demoCredential = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-        val pending = pendingDemoPin
-        pendingDemoPin = null
-        if (result.resultCode == RESULT_OK && pending != null) demo.pinOperation(pending.first, pending.second)
-    }
-    @Suppress("DEPRECATION")
-    private fun authorizeDemoPin(save: Boolean, attemptId: String) {
-        if (pendingDemoPin != null) return
-        val lock = getSystemService(android.app.KeyguardManager::class.java)
-        if (!lock.isDeviceSecure) {
-            demo.error("Configura un bloqueo de pantalla en Android para guardar el PIN ficticio. También puedes escribir 1234 sin guardarlo.")
-            return
-        }
-        pendingDemoPin = save to attemptId
-        lifecycleScope.launch {
-            try {
-                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { demo.vault.prepareKey() }
-                if (!demo.state.value.open || demo.state.value.attempt?.id != attemptId) { pendingDemoPin = null; return@launch }
-                val intent = lock.createConfirmDeviceCredentialIntent("PIN ficticio de SIMple", "Desbloquea Android para ${if (save) "guardar" else "usar"} el PIN de prueba. No es el PIN bancario.")
-                if (intent == null) { pendingDemoPin = null; demo.error("Android no ofrece desbloqueo seguro en este dispositivo.") }
-                else demoCredential.launch(intent)
-            } catch (_: Exception) { pendingDemoPin = null; demo.error("No se pudo abrir el almacenamiento seguro. Usa Olvidar PIN ficticio si cambiaste el bloqueo del dispositivo.") }
-        }
-    }
     private var externalSubscription: Int? = null
     private var externalLeft = false
     private val contactPicker = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
@@ -81,7 +55,6 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         updates = ViewModelProvider(this)[com.simple.mobile.data.updates.AppUpdates::class.java]
         model = ViewModelProvider(this)[DashboardViewModel::class.java]
-        demo = ViewModelProvider(this)[com.simple.mobile.presentation.recharge.RechargeDemoViewModel::class.java]
         externalSubscription = savedInstanceState?.getInt("external_subscription", -1)?.takeIf { it >= 0 }
         externalLeft = savedInstanceState?.getBoolean("external_left") ?: false
         pendingQuery = savedInstanceState?.getString("pending_query")
@@ -103,11 +76,6 @@ class MainActivity : ComponentActivity() {
                 onRefreshAll = { requestQuery("ALL") },
                 onRefreshNeeded = { requestQuery("SMART") },
                 onRetryQueries = { requestQuery("RETRY") },
-                demo = demo, onDemoPin = ::authorizeDemoPin,
-                onRechargeDemo = {
-                    val state = model.state.value
-                    demo.open(state.selected, state.displayLines.firstOrNull { it.subscription == state.selected }?.label ?: "SIM de prueba")
-                },
                 onReminders = { enabled ->
                     if (!enabled) model.setReminders(false)
                     else if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED)
