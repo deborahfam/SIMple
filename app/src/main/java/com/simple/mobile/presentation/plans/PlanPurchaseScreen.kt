@@ -37,7 +37,7 @@ import com.simple.mobile.presentation.FlowProgress
 import com.simple.mobile.presentation.DetailDisclosure
 
 @Composable fun PlanPurchaseScreen(state: DashboardState, model: DashboardViewModel, onClose: () -> Unit,
-    onPermissions: () -> Unit, onRefresh: () -> Unit) {
+    onPermissions: () -> Unit, onRefresh: () -> Unit, onCategories: (() -> Unit)? = null) {
     val purchase by model.purchases.state.collectAsStateWithLifecycle()
     val initialSubscription by rememberSaveable { mutableIntStateOf(state.selected) }
     var selectedId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -69,6 +69,8 @@ import com.simple.mobile.presentation.DetailDisclosure
                 Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                     if (reviewing && attempt == null) {
                         IconButton(onClick = { reviewing = false }) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Volver a elegir plan") }
+                    } else if (attempt == null && onCategories != null) {
+                        IconButton(onClick = onCategories) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Volver a categorías") }
                     }
                     Text(if (attempt != null) "Tu solicitud" else if (reviewing) "Revisar compra" else "Comprar planes", modifier = Modifier.weight(1f).semantics { heading() }, style = MaterialTheme.typography.titleLarge)
                     IconButton(onClick = onClose) { Icon(Icons.Outlined.Close, "Cerrar planes") }

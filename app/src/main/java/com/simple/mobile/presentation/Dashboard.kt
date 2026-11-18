@@ -546,7 +546,7 @@ private val Navy = Color(0xFF35234F)
                 }, confirmButton = { TextButton(onClick = { selectedReading = null }) { Text("Cerrar") } })
         }
         if (transfer) TransferPanel(state, model, onPickContact, onTransfer) { transfer = false }
-        if (buyPlans) com.simple.mobile.presentation.plans.PlanPurchaseScreen(state, model,
+        if (buyPlans) com.simple.mobile.presentation.plans.PlanShopScreen(state, model,
             onClose = { buyPlans = false }, onPermissions = onConnect, onRefresh = onRefreshAll)
         if (rechargeOpen) com.simple.mobile.presentation.recharge.RechargeScreen(state, onClose = { rechargeOpen = false }, onPermissions = onConnect) { subscription ->
             com.simple.mobile.presentation.recharge.BankRechargeNotices(state.copy(selected = subscription),

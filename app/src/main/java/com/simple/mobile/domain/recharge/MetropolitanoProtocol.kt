@@ -3,9 +3,9 @@ package com.simple.mobile.domain.recharge
 import java.security.SecureRandom
 
 /** Numeric USSD wire format observed in ETECSA's Transfermovil v.1.260416 APK.
- * Only Metropolitano authentication and associated CUP-account mobile recharge are exposed.
+ * Exposes Metropolitano authentication, associated CUP-account recharge and plan category menus.
  * Not encryption for storage; never log either input or generated command.
- * Integer CUP only: decimal fields use a different legacy encoding, intentionally unsupported.
+ * Recharge amounts are integer CUP. Plan menus send no price or selected offer.
  */
 object MetropolitanoProtocol {
     const val VERSION = "1260416"
@@ -26,8 +26,13 @@ object MetropolitanoProtocol {
         require(phone(phone) == phone && amount(cup) == cup) { "Datos de recarga inválidos" }
         return command("54", listOf(phone, cup, "1"), random.nextInt(100))
     }
+    /** Opens a category menu, never selects or confirms a priced offer. */
+    fun planMenu(phone: String, category: com.simple.mobile.domain.plans.BankPlanCategory): String {
+        require(phone(phone) == phone) { "Número de línea inválido" }
+        return command("6", listOf(phone, category.wireId, "2", "1", "0000"), random.nextInt(100))
+    }
     internal fun command(operation: String, fields: List<String>, seed: Int): String {
-        require(operation in setOf("40", "54"))
+        require(operation in setOf("40", "54", "6"))
         return "*444*$operation*${encode(fields, seed)}*$VERSION#"
     }
     internal fun encode(fields: List<String>, seed: Int): String {

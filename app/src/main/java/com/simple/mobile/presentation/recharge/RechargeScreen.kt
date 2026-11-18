@@ -180,7 +180,7 @@ import com.simple.mobile.presentation.FlowProgress
     }
 }
 
-@Composable private fun RechargeLineSelector(dashboard: DashboardState, selected: Int, source: Boolean = false, onSelect: (Int) -> Unit) {
+@Composable internal fun RechargeLineSelector(dashboard: DashboardState, selected: Int, source: Boolean = false, onSelect: (Int) -> Unit) {
     var expanded by remember { mutableStateOf(false) }
     val destination = dashboard.displayLines.firstOrNull { it.subscription == selected }
     val phone = dashboard.linePhones[selected].orEmpty()
