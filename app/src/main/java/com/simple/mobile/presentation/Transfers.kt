@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
@@ -20,146 +21,163 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.simple.mobile.domain.transfer.*
 
-@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable internal fun TransferPanel(state: DashboardState, model: DashboardViewModel,
     pickContact: () -> Unit, launch: (TransferDraft) -> Boolean, dismiss: () -> Unit) {
+    var subscription by rememberSaveable { mutableIntStateOf(state.selected) }
     var name by rememberSaveable { mutableStateOf("") }
     var phone by rememberSaveable { mutableStateOf("") }
     var amount by rememberSaveable { mutableStateOf("") }
     var editing by rememberSaveable { mutableStateOf<String?>(null) }
     var favorite by rememberSaveable { mutableStateOf(false) }
-    var showAll by rememberSaveable { mutableStateOf(false) }
-    var review by remember { mutableStateOf<TransferDraft?>(null) }
+    var manual by rememberSaveable { mutableStateOf(false) }
+    var simsOpen by remember { mutableStateOf(false) }
+    var recipientsOpen by remember { mutableStateOf(false) }
     var deleting by remember { mutableStateOf<Recipient?>(null) }
     val validPhone = TransferPolicy.phone(phone)
+    val totals = TransferPolicy.totals(amount)
     val duplicate = state.recipients.firstOrNull { it.phone == validPhone && it.id != editing }
-    val validAmount = TransferPolicy.amount(amount)
-    val line = state.lines.firstOrNull { it.subscription == state.selected && it.cubacel }
+    val line = state.displayLines.firstOrNull { it.subscription == subscription && it.active && it.cubacel }
     val writable = state.transferReady && !state.transferSaving && !state.managingLine
     LaunchedEffect(state.pickedContact) {
         state.pickedContact?.let { (pickedName, pickedPhone) ->
             name = pickedName.take(40); phone = TransferPolicy.phone(pickedPhone) ?: pickedPhone.take(30)
-            editing = null; favorite = false; model.consumeContact()
+            editing = null; favorite = false; manual = true; model.consumeContact()
         }
     }
     Dialog(onDismissRequest = { if (!state.transferSaving) dismiss() },
         properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
+        val focus = LocalFocusManager.current
+        val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-            Scaffold(Modifier.fillMaxSize().safeDrawingPadding().imePadding(),
-                contentWindowInsets = WindowInsets(0, 0, 0, 0),
+            Scaffold(Modifier.fillMaxSize().safeDrawingPadding().imePadding(), contentWindowInsets = WindowInsets(0, 0, 0, 0),
                 topBar = {
-                    Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically) {
+                    Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text("Transferir saldo", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
                         IconButton(onClick = dismiss, enabled = !state.transferSaving) { Icon(Icons.Outlined.Close, "Cerrar") }
                     }
                 }, bottomBar = {
                     Surface(color = MaterialTheme.colorScheme.surface, shadowElevation = 8.dp) {
-                        Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text("Revisa los datos antes de continuar en Teléfono", style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.widthIn(max = 560.dp).fillMaxWidth())
-                            Button(onClick = { review = TransferDraft(line!!.subscription, line.label, name.trim(), validPhone!!, validAmount!!) },
-                                enabled = writable && !state.busy && line != null && validPhone != null && validAmount != null,
-                                modifier = Modifier.widthIn(max = 560.dp).fillMaxWidth().heightIn(min = 52.dp)) { Text("Revisar transferencia") }
+                        Box(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp), contentAlignment = Alignment.Center) {
+                            Button(onClick = {
+                                focus.clearFocus()
+                                if (line != null && validPhone != null && totals != null) {
+                                    model.startTransfer(TransferDraft(subscription, line.label, name.trim(), validPhone, totals.received)) { ready ->
+                                        val opened = launch(ready)
+                                        if (opened) dismiss()
+                                        opened
+                                    }
+                                }
+                            }, enabled = writable && !state.busy && line != null && validPhone != null && totals != null,
+                                modifier = Modifier.widthIn(max = 560.dp).fillMaxWidth().heightIn(min = 52.dp)) {
+                                Text(if (state.transferSaving) "Preparando…" else "Continuar en Teléfono")
+                            }
                         }
                     }
                 }) { padding ->
                 Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.TopCenter) {
-                    Column(Modifier.widthIn(max = 600.dp).fillMaxWidth().verticalScroll(rememberScrollState()).padding(20.dp),
-                        verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                        FlowProgress(0, listOf("Prepara tu transferencia", "Revisa los datos"))
-                        Text("Elige a quién enviar. Revisarás los datos antes de abrir el menú de Cubacel.", style = MaterialTheme.typography.bodyMedium)
-                        Text("Desde tu SIM", fontWeight = FontWeight.Bold)
-                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            state.lines.filter { it.cubacel }.forEach { sim ->
-                                FilterChip(selected = sim.subscription == state.selected, onClick = { model.select(sim.subscription) },
-                                    enabled = !state.transferSaving, label = { Text(sim.label) })
-                            }
-                        }
-                        if (line == null) Text("Conecta una SIM Cubacel para transferir. Puedes guardar destinatarios mientras tanto.", color = MaterialTheme.colorScheme.error)
-                        if (!state.transferReady) Text("Los destinatarios no están disponibles. Reintenta el almacenamiento desde Ajustes.", color = MaterialTheme.colorScheme.error)
-                        if (state.recipients.isNotEmpty()) {
-                            Text("Destinatarios guardados", fontWeight = FontWeight.Bold)
-                            (if (showAll) state.recipients else state.recipients.take(5)).forEach { recipient ->
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    TextButton(onClick = {
-                                        editing = recipient.id; name = recipient.name; phone = recipient.phone; favorite = recipient.favorite
-                                    }, enabled = writable, modifier = Modifier.weight(1f)) {
-                                        Column(Modifier.fillMaxWidth()) {
-                                            Text((if (recipient.favorite) "★ " else "") + recipient.name, fontWeight = FontWeight.Bold)
-                                            Text("+53 ${recipient.phone}")
-                                        }
-                                    }
-                                    IconButton(onClick = { deleting = recipient }, enabled = writable) { Icon(Icons.Outlined.DeleteOutline, "Eliminar ${recipient.name}") }
+                    Column(Modifier.widthIn(max = 600.dp).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 12.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Box {
+                            TransferSelection("SIM de origen", line?.label ?: "Seleccionar SIM", Icons.Outlined.SimCard, writable) { simsOpen = true }
+                            DropdownMenu(expanded = simsOpen, onDismissRequest = { simsOpen = false }) {
+                                state.displayLines.filter { it.active && it.cubacel }.forEach { sim ->
+                                    DropdownMenuItem(text = { Text(sim.label) }, onClick = { subscription = sim.subscription; simsOpen = false },
+                                        leadingIcon = { if (subscription == sim.subscription) Icon(Icons.Outlined.Check, null) })
                                 }
                             }
-                            if (state.recipients.size > 5) TextButton(onClick = { showAll = !showAll }) { Text(if (showAll) "Ver menos" else "Ver todos (${state.recipients.size})") }
                         }
-                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            OutlinedButton(onClick = pickContact, enabled = writable) { Text("Elegir de Contactos") }
-                            TextButton(onClick = { editing = null; name = ""; phone = ""; favorite = false }, enabled = writable) { Text("Nuevo destinatario") }
+                        Box {
+                            TransferSelection("Destinatario", validPhone?.let { if (name.isBlank()) "+53 $it" else "$name · $it" } ?: "Seleccionar destinatario",
+                                Icons.Outlined.PersonOutline, writable) { recipientsOpen = true }
+                            DropdownMenu(expanded = recipientsOpen, onDismissRequest = { recipientsOpen = false }) {
+                                state.recipients.forEach { recipient ->
+                                    DropdownMenuItem(text = { Text("${recipient.name} · ${recipient.phone}") }, onClick = {
+                                        editing = recipient.id; name = recipient.name; phone = recipient.phone; favorite = recipient.favorite
+                                        manual = false; recipientsOpen = false
+                                    })
+                                }
+                                DropdownMenuItem(text = { Text("Elegir de Contactos") }, onClick = { recipientsOpen = false; pickContact() })
+                                DropdownMenuItem(text = { Text("Escribir otro número") }, onClick = {
+                                    recipientsOpen = false; manual = true; editing = null; name = ""; phone = ""; favorite = false
+                                })
+                            }
                         }
-                        OutlinedTextField(value = name, onValueChange = { name = it.filterNot(Char::isISOControl).take(40) },
-                            label = { Text("Nombre o apodo") }, singleLine = true, enabled = writable, modifier = Modifier.fillMaxWidth())
-                        OutlinedTextField(value = phone, onValueChange = { phone = it.take(30) }, label = { Text("Número Cubacel") },
-                            supportingText = { Text("8 dígitos, empieza por 5 o 6. También puedes usar +53.") },
-                            isError = phone.isNotBlank() && validPhone == null, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                        if (manual) OutlinedTextField(value = phone, onValueChange = { phone = it.take(30) }, label = { Text("Número de destino") },
+                            supportingText = { Text("8 dígitos · empieza por 5 o 6") }, isError = phone.isNotBlank() && validPhone == null,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone), singleLine = true, enabled = writable, modifier = Modifier.fillMaxWidth())
+                        OutlinedTextField(value = amount, onValueChange = { amount = it.take(12) }, label = { Text("El destino recibe") }, suffix = { Text("CUP") },
+                            isError = amount.isNotBlank() && totals == null, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                             singleLine = true, enabled = writable, modifier = Modifier.fillMaxWidth())
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Checkbox(modifier = Modifier.semantics { contentDescription = "Guardar como favorito" }, checked = favorite, onCheckedChange = { favorite = it }, enabled = writable)
-                            Text("Favorito", modifier = Modifier.weight(1f))
-                            TextButton(onClick = { model.saveRecipient(editing, name, phone, favorite) },
-                                enabled = writable && TransferPolicy.name(name) != null && validPhone != null && duplicate == null) { Text(if (editing == null) "Guardar" else "Guardar cambios") }
+                        Surface(color = MaterialTheme.colorScheme.primaryContainer, shape = MaterialTheme.shapes.extraLarge) {
+                            Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                TransferCostRow("Recibe el destino", "${totals?.received ?: "—"} CUP")
+                                TransferCostRow("Comisión fija", "5 CUP")
+                                HorizontalDivider(color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.2f))
+                                TransferCostRow("Se descuenta de tu saldo", "${totals?.debited ?: "—"} CUP", true)
+                            }
                         }
-                        if (duplicate != null) Text("Este número ya está guardado como ${duplicate.name}. Selecciónalo arriba para editarlo.", style = MaterialTheme.typography.bodySmall)
-                        state.message?.let { Text(it, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodyMedium) }
-                        Text("Los destinatarios se guardan cifrados en este teléfono. Solo se lee el contacto que elijas.", style = MaterialTheme.typography.bodySmall)
-                        HorizontalDivider()
-                        OutlinedTextField(value = amount, onValueChange = { amount = it.take(12) }, label = { Text("Importe a transferir · CUP") },
-                            supportingText = { Text("Importe positivo, hasta dos decimales.") }, isError = amount.isNotBlank() && validAmount == null,
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), singleLine = true, enabled = writable,
-                            modifier = Modifier.fillMaxWidth())
-                        Text("Cargo publicado: 5 CUP por transferencia. Confirma las condiciones en Cubacel antes de aceptar.", style = MaterialTheme.typography.bodySmall)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Outlined.Key, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("PIN inicial: 1234", modifier = Modifier.weight(1f).padding(start = 8.dp), style = MaterialTheme.typography.bodySmall)
+                            TextButton(onClick = { clipboard.setText(androidx.compose.ui.text.AnnotatedString(TransferPolicy.DEFAULT_PIN)) }) { Text("Copiar") }
+                        }
+                        Text("Completa los datos y el PIN en Cubacel. Si cambiaste el PIN, usa el actual.", style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        if (validPhone != null) DetailDisclosure("Opciones del destinatario") {
+                            OutlinedTextField(value = name, onValueChange = { name = it.filterNot(Char::isISOControl).take(40) }, label = { Text("Nombre") },
+                                singleLine = true, enabled = writable, modifier = Modifier.fillMaxWidth())
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Checkbox(modifier = Modifier.semantics { contentDescription = "Guardar como favorito" }, checked = favorite, onCheckedChange = { favorite = it }, enabled = writable)
+                                Text("Favorito", modifier = Modifier.weight(1f))
+                                TextButton(onClick = { model.saveRecipient(editing, name, phone, favorite) },
+                                    enabled = writable && TransferPolicy.name(name) != null && duplicate == null) { Text("Guardar") }
+                                editing?.let { id -> state.recipients.firstOrNull { it.id == id }?.let { recipient ->
+                                    IconButton(onClick = { deleting = recipient }, enabled = writable) { Icon(Icons.Outlined.DeleteOutline, "Eliminar destinatario") }
+                                } }
+                            }
+                            TextButton(onClick = { clipboard.setText(androidx.compose.ui.text.AnnotatedString(validPhone)) }) { Text("Copiar número") }
+                            if (duplicate != null) Text("Ya guardado como ${duplicate.name}.", style = MaterialTheme.typography.bodySmall)
+                        }
+                        if (line == null) Text("Selecciona una SIM Cubacel activa.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                        if (!state.transferReady) Text("Reintenta el almacenamiento en Ajustes.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                        if (state.busy) Text("Espera a que termine la consulta.", style = MaterialTheme.typography.bodySmall)
+                        state.message?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary) }
                         if (state.transferSaving) LinearProgressIndicator(Modifier.fillMaxWidth())
                     }
                 }
             }
         }
     }
-    review?.let { draft ->
-        AlertDialog(onDismissRequest = { if (!state.transferSaving) review = null }, title = { Text("Revisa antes de continuar") },
-            text = {
-                Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    FlowProgress(1, listOf("Prepara tu transferencia", "Revisa los datos"))
-                    Text("Desde: ${draft.line}")
-                    Text("Para: ${draft.name.ifBlank { "Destinatario" }}\n+53 ${draft.phone}", fontWeight = FontWeight.Bold)
-                    Text("Importe: ${draft.amount} CUP", style = MaterialTheme.typography.headlineSmall)
-                    Text("Cargo publicado: 5 CUP\nTotal de referencia: ${draft.amount.toBigDecimal().add(TransferPolicy.publishedFee).stripTrailingZeros().toPlainString()} CUP")
-                    Text("Abriremos *234#. Tendrás que introducir el número, importe y PIN en ese menú y elegir la SIM indicada. SIMple no envía estos datos ni guarda tu PIN.")
-                    val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
-                    TextButton(onClick = { clipboard.setText(androidx.compose.ui.text.AnnotatedString(draft.phone)) }) { Text("Copiar número") }
-                    Text("Hasta 3 transferencias diarias según ETECSA. Abrir el menú no confirma que se haya enviado saldo.", style = MaterialTheme.typography.bodySmall)
-                }
-            }, confirmButton = {
-                TextButton(onClick = {
-                    model.startTransfer(draft) { ready ->
-                        val opened = launch(ready)
-                        if (opened) { review = null; dismiss() }
-                        opened
-                    }
-                }, enabled = writable && !state.busy && state.lines.any { it.subscription == draft.subscription && it.cubacel }) { Text("Continuar en Teléfono") }
-            }, dismissButton = { TextButton(onClick = { review = null }, enabled = !state.transferSaving) { Text("Volver") } })
-    }
     deleting?.let { recipient ->
         AlertDialog(onDismissRequest = { deleting = null }, title = { Text("¿Eliminar a ${recipient.name}?") },
-            text = { Text("Se eliminará de tus destinatarios guardados. Sus registros de transferencia permanecerán en el historial.") },
             confirmButton = { TextButton(onClick = {
                 model.deleteRecipient(recipient.id)
                 if (editing == recipient.id) { editing = null; name = ""; phone = ""; favorite = false }
                 deleting = null
             }, enabled = writable) { Text("Eliminar") } },
             dismissButton = { TextButton(onClick = { deleting = null }) { Text("Cancelar") } })
+    }
+}
+
+@Composable private fun TransferSelection(label: String, value: String, icon: androidx.compose.ui.graphics.vector.ImageVector,
+    enabled: Boolean, onClick: () -> Unit) {
+    OutlinedCard(onClick = onClick, enabled = enabled, modifier = Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.large) {
+        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(icon, null, tint = MaterialTheme.colorScheme.primary)
+            Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
+                Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(value, style = MaterialTheme.typography.titleSmall)
+            }
+            Icon(Icons.Outlined.ExpandMore, null)
+        }
+    }
+}
+
+@Composable private fun TransferCostRow(label: String, value: String, total: Boolean = false) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+        Text(label, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
+        Text(value, style = if (total) MaterialTheme.typography.titleLarge else MaterialTheme.typography.titleSmall,
+            fontWeight = if (total) FontWeight.Bold else FontWeight.Medium)
     }
 }
 

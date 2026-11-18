@@ -4,6 +4,14 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class TransferPolicyTest {
+    @Test fun fixedFeeIsAddedToSenderWithoutReducingDestination() {
+        assertEquals(TransferPolicy.Totals("100", "105"), TransferPolicy.totals("100"))
+        assertEquals(TransferPolicy.Totals("360", "365"), TransferPolicy.totals("360"))
+        assertEquals(TransferPolicy.Totals("0.01", "5.01"), TransferPolicy.totals("0,01"))
+        assertNull(TransferPolicy.totals("0"))
+        assertNull(TransferPolicy.totals("1.234"))
+    }
+
     @Test fun acceptsSixPrefixWithCountryCode() {
         assertEquals("61234567", TransferPolicy.phone("+53 6123-4567"))
     }

@@ -9,6 +9,13 @@ data class TransferDraft(val subscription: Int, val line: String, val name: Stri
 
 object TransferPolicy {
     const val MENU = "*234#"
+    const val DEFAULT_PIN = "1234"
+    // ETECSA: https://www.etecsa.cu/es/movil/necesitas-saldo (checked 2026-11-17).
+    // Fixed fee charged to the sender in addition to the amount received.
+    data class Totals(val received: String, val debited: String)
+    fun totals(input: String): Totals? = amount(input)?.let {
+        Totals(it, it.toBigDecimal().add(publishedFee).stripTrailingZeros().toPlainString())
+    }
     val publishedFee = BigDecimal("5")
     fun phone(input: String): String? {
         val clean = input.replace(Regex("[\\s()\\-]"), "")
