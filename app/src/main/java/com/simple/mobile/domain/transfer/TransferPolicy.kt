@@ -17,7 +17,7 @@ object TransferPolicy {
             clean.startsWith("0053") -> clean.drop(4)
             else -> clean
         }
-        return national.takeIf { it.matches(Regex("5[0-9]{7}")) }
+        return national.takeIf { it.matches(Regex("[56][0-9]{7}")) }
     }
     fun amount(input: String): String? {
         val text = input.trim().replace(',', '.')

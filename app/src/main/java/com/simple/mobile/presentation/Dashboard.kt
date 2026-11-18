@@ -562,7 +562,7 @@ private val Navy = Color(0xFF35234F)
                         supportingText = { Text("Se usará al recargar esta línea. Comprueba que sea correcto.") },
                         keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Phone), singleLine = true)
                 } },
-                confirmButton = { TextButton(enabled = linePhone.isEmpty() || Regex("5[0-9]{7}").matches(linePhone), onClick = { model.renameLine(line.subscription, nickname, linePhone); rename = null }) { Text("Guardar") } },
+                confirmButton = { TextButton(enabled = linePhone.isEmpty() || Regex("[56][0-9]{7}").matches(linePhone), onClick = { model.renameLine(line.subscription, nickname, linePhone); rename = null }) { Text("Guardar") } },
                 dismissButton = { TextButton(onClick = { rename = null }) { Text("Cancelar") } })
         }
         if (delete) AlertDialog(onDismissRequest = { delete = false }, title = { Text("¿Eliminar datos de $deleteLabel?") },

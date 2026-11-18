@@ -10,6 +10,26 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class BankPinVaultTest {
+    @Test fun optedInPinLoadsAfterReopenWithoutDevicePromptAndDetectsTampering() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val vault = BankPinVault(context, 900003)
+        vault.forget()
+        try {
+            val pin = "4826".toCharArray()
+            vault.save(pin)
+            assertTrue(pin.all { it == '\u0000' })
+            val reopened = BankPinVault(context, 900003)
+            assertTrue(reopened.automatic)
+            val recovered = reopened.unlock()
+            try { assertArrayEquals("4826".toCharArray(), recovered) } finally { recovered.fill('\u0000') }
+            val prefs = context.getSharedPreferences("bank_pins", Context.MODE_PRIVATE)
+            assertFalse(prefs.all.toString().contains("4826"))
+            prefs.edit().putString("900003.data", "AAAA").commit()
+            assertThrows(Exception::class.java) { reopened.unlock() }
+        } finally { vault.forget() }
+        assertFalse(vault.saved)
+    }
+
     @Test fun invalidPinIsWipedAndNeverPersisted() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val vault = BankPinVault(context, 900001)

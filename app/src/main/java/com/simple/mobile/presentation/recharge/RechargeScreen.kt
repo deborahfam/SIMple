@@ -2,7 +2,6 @@ package com.simple.mobile.presentation.recharge
 
 import android.Manifest
 import android.content.pm.PackageManager
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
@@ -37,14 +36,14 @@ import com.simple.mobile.presentation.FlowProgress
     val controller = (context.applicationContext as SimpleApplication).bankRecharges
     val state by controller.state.collectAsStateWithLifecycle()
     val attempt = state.attempt
-    val initialSub by rememberSaveable { mutableIntStateOf(dashboard.selected) }
+    var initialSub by rememberSaveable { mutableIntStateOf(dashboard.selected) }
     val subscription = attempt?.subscription ?: initialSub
     val line = attempt?.line ?: dashboard.displayLines.firstOrNull { it.subscription == subscription }?.label.orEmpty()
     var formStep by rememberSaveable { mutableIntStateOf(0) }
     var destination by rememberSaveable { mutableIntStateOf(dashboard.selected) }
     val phone = dashboard.linePhones[destination].orEmpty()
     var cup by rememberSaveable { mutableStateOf("360") }
-    var pin by remember(attempt?.id) { mutableStateOf("") }
+    var pin by remember(subscription, attempt?.id) { mutableStateOf("") }
     var authConfirmed by remember(attempt?.id) { mutableStateOf(false) }
     var outcomeReviewed by remember(attempt?.id) { mutableStateOf(false) }
     val eligible = dashboard.lines.any { it.subscription == subscription && it.active && it.cubacel }
@@ -52,6 +51,7 @@ import com.simple.mobile.presentation.FlowProgress
     val available = eligible && permitted && dashboard.storageReady && !dashboard.busy && !dashboard.managingLine && !dashboard.transferSaving
     val debitPhase = attempt?.phase in setOf(BankPhase.SENDING, BankPhase.RESPONSE, BankPhase.UNKNOWN)
     val step = if (debitPhase) 3 else if (attempt != null) 2 else formStep
+    var customAmount by rememberSaveable { mutableStateOf(false) }
     val scroll = rememberScrollState()
     Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false,
         decorFitsSystemWindows = false, securePolicy = SecureFlagPolicy.SecureOn)) {
@@ -71,17 +71,12 @@ import com.simple.mobile.presentation.FlowProgress
                     Surface(color = MaterialTheme.colorScheme.surface, shadowElevation = 8.dp) {
                         Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp), horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Column(Modifier.widthIn(max = 560.dp).fillMaxWidth()) {
-                                Text("Metropolitano · cuenta CUP asociada", style = MaterialTheme.typography.titleSmall)
-                                Text(attempt?.let { "${it.cup} CUP para +53 ${it.phone}" } ?: "${MetropolitanoProtocol.amount(cup)?.let { "$it CUP" } ?: "Prepara tu recarga"}",
-                                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
                             val button = Modifier.widthIn(max = 560.dp).fillMaxWidth().heightIn(min = 52.dp)
                             when {
                                 state.busy -> Button(onClick = {}, enabled = false, modifier = button) { Text("Esperando respuesta…") }
-                                attempt == null && formStep < 2 -> Button(onClick = { focus.clearFocus(); formStep++ }, modifier = button,
-                                    enabled = state.ready && (formStep == 0 || (MetropolitanoProtocol.phone(phone) != null && MetropolitanoProtocol.amount(cup) != null))) { Text(if (formStep == 0) "Elegir otro importe" else "Continuar") }
                                 !permitted && (attempt == null || attempt.phase == BankPhase.AUTH_RESPONSE) -> Button(onClick = onPermissions, modifier = button) { Text("Permitir acceso al teléfono") }
+                                attempt == null && formStep < 2 -> Button(onClick = { focus.clearFocus(); formStep++ }, modifier = button,
+                                    enabled = state.ready && (if (formStep == 0) eligible else MetropolitanoProtocol.phone(phone) != null && MetropolitanoProtocol.amount(cup) != null)) { Text(if (formStep == 1) "Revisar recarga · ${MetropolitanoProtocol.amount(cup) ?: "—"} CUP" else "Continuar") }
                                 attempt == null -> Button(onClick = {
                                     val value = pin.toCharArray(); pin = ""; focus.clearFocus()
                                     controller.authenticate(subscription, line, phone.trim(), MetropolitanoProtocol.amount(cup)!!, value)
@@ -95,44 +90,35 @@ import com.simple.mobile.presentation.FlowProgress
                 }) { padding ->
                 Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.TopCenter) {
                     Column(Modifier.widthIn(max = 600.dp).fillMaxWidth().verticalScroll(scroll).padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                        FlowProgress(step, listOf("Tu recarga", "Línea e importe", "Revisa y confirma", "Tu solicitud"))
+                        FlowProgress(step, listOf("Banco y SIM", "Tu recarga", "Confirmación", "Resultado"))
                         if (!state.ready && state.error == null) LinearProgressIndicator(Modifier.fillMaxWidth())
                         state.error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }) }
-                        if (!eligible) Text("Selecciona en Inicio la SIM Cubacel registrada en Metropolitano.", color = MaterialTheme.colorScheme.error)
+                        if (!eligible) Text("Elige una SIM Cubacel activa vinculada al banco.", color = MaterialTheme.colorScheme.error)
                         if (!dashboard.storageReady) Text("Reintenta el almacenamiento desde Ajustes antes de recargar.", color = MaterialTheme.colorScheme.error)
                         if (dashboard.busy) Text("Espera a que termine la consulta de tu línea.")
                         if (attempt == null && formStep == 0) {
-                            Text("Recarga desde tu banco", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                            Surface(color = MaterialTheme.colorScheme.primaryContainer, shape = MaterialTheme.shapes.large,
-                                border = BorderStroke(2.dp, MaterialTheme.colorScheme.primary)) {
-                                Row(Modifier.fillMaxWidth().padding(20.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                                    Icon(Icons.Outlined.AccountBalance, null, tint = MaterialTheme.colorScheme.primary)
-                                    Column(Modifier.weight(1f)) {
-                                        Text("Metropolitano", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                                        Text("Cuenta CUP asociada a tu línea", style = MaterialTheme.typography.bodySmall)
-                                    }
-                                    Icon(Icons.Outlined.CheckCircle, null, tint = MaterialTheme.colorScheme.primary)
-                                }
+                            Text("¿Desde dónde pagas?", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                            RechargeBankSelector()
+                            RechargeLineSelector(dashboard, subscription, source = true) {
+                                initialSub = it
+                                destination = it
+                                pin = ""
                             }
-                            Text("Necesitas tener el servicio bancario registrado en esta SIM. SIMple enviará las solicitudes por USSD desde tu teléfono.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text("Línea: ${line.ifBlank { "Sin SIM seleccionada" }}", style = MaterialTheme.typography.titleSmall)
-                            RechargeLineSelector(dashboard, destination) { destination = it }
-                            Button(onClick = { cup = "360"; formStep = 2 }, enabled = MetropolitanoProtocol.phone(phone) != null && state.ready,
-                                modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) {
-                                Text("Recargar 360 CUP")
-                            }
-                            Text("Revisa y autentícate para confirmar el cargo.", style = MaterialTheme.typography.bodySmall,
+                            Text("Usa la SIM registrada en tu banco.", style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant)
                         } else if (attempt == null && formStep == 1) {
-                            Text("Línea e importe", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                            Text("¿Qué línea recargas?", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
                             RechargeLineSelector(dashboard, destination) { destination = it }
-                            OutlinedTextField(cup, { cup = it.take(8) }, modifier = Modifier.fillMaxWidth(), label = { Text("Importe") }, suffix = { Text("CUP") },
+                            Text("Importe", style = MaterialTheme.typography.titleSmall)
+                            FilterChip(selected = !customAmount, onClick = { cup = "360"; customAmount = false },
+                                label = { Text("360 CUP") }, leadingIcon = { if (!customAmount) Icon(Icons.Outlined.Check, null) })
+                            if (customAmount) OutlinedTextField(cup, { cup = it.take(8) }, modifier = Modifier.fillMaxWidth(), label = { Text("Otro importe") }, suffix = { Text("CUP") },
                                 supportingText = { Text("De 1 a 360 CUP, sin decimales") }, isError = cup.isNotEmpty() && MetropolitanoProtocol.amount(cup) == null,
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), singleLine = true)
-                            Text("El operador comprobará el límite de recarga disponible del número de destino.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            else TextButton(onClick = { customAmount = true; cup = "" }) { Text("Elegir otro importe") }
                         } else {
                             Surface(color = MaterialTheme.colorScheme.primaryContainer, shape = MaterialTheme.shapes.extraLarge) {
-                                Column(Modifier.fillMaxWidth().padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                                     Text("TU RECARGA", style = MaterialTheme.typography.labelLarge)
                                     Text("${attempt?.cup ?: MetropolitanoProtocol.amount(cup)} CUP", style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Bold)
                                     Text("Para +53 ${attempt?.phone ?: phone}", style = MaterialTheme.typography.titleMedium)
@@ -143,12 +129,11 @@ import com.simple.mobile.presentation.FlowProgress
                             }
                             if (attempt == null) {
                                 Text("Primero, autentícate", style = MaterialTheme.typography.titleLarge)
-                                Text("La autenticación no envía la recarga. Después revisarás la respuesta y confirmarás el cargo.")
+                                Text("Autentícate para confirmar el pago.", style = MaterialTheme.typography.bodySmall)
                                 OutlinedTextField(pin, { pin = it.filter { c -> c in '0'..'9' }.take(4) }, label = { Text("PIN bancario · 4 dígitos") },
                                     modifier = Modifier.fillMaxWidth(), visualTransformation = PasswordVisualTransformation(),
                                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword), singleLine = true)
                                 SavedBankPin(subscription, pin) { pin = it }
-                                Text("El PIN sólo se guarda si lo eliges. No cambies de banco ni de SIM entre la autenticación y la recarga.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             } else {
                                 Text(when(attempt.phase) {
                                     BankPhase.AUTH_SENDING -> "Autenticando en Metropolitano"
@@ -167,16 +152,16 @@ import com.simple.mobile.presentation.FlowProgress
                                     }
                                 }
                                 if (attempt.phase == BankPhase.AUTH_RESPONSE) {
-                                    Text("Revisa el SMS de PAGOxMOVIL: debe confirmar la autenticación en Metropolitano de esta línea. Una respuesta USSD por sí sola no la confirma.")
+                                    Text("Comprueba el SMS de autenticación de esta SIM.", style = MaterialTheme.typography.bodySmall)
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         Checkbox(authConfirmed, { authConfirmed = it })
                                         Text("He recibido la confirmación de autenticación de Metropolitano.", style = MaterialTheme.typography.bodyMedium)
                                     }
-                                    Text("Al confirmar se enviará una única solicitud de ${attempt.cup} CUP. La revisión vence a los 5 minutos.", style = MaterialTheme.typography.bodySmall)
+                                    Text("La confirmación vence a los 5 minutos.", style = MaterialTheme.typography.bodySmall)
                                 } else if (debitPhase) {
-                                    Text("Comprueba el SMS y los recursos del móvil de destino. Recibir una respuesta no garantiza que la recarga se completó. No repitas el pago si el resultado es incierto.")
+                                    Text("Confirma la recarga en el SMS. Si el resultado es incierto, no repitas el pago.", style = MaterialTheme.typography.bodySmall)
                                 } else if (!state.busy) {
-                                    Text("No se ha enviado ninguna recarga. Revisa los permisos, la SIM y el SMS del banco antes de iniciar otra autenticación.")
+                                    Text("Recarga no enviada. Revisa la SIM y el SMS del banco.", style = MaterialTheme.typography.bodySmall)
                                 }
                                 if (!state.busy) {
                                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -187,7 +172,7 @@ import com.simple.mobile.presentation.FlowProgress
                                 }
                             }
                         }
-                        bankNotices(subscription)
+                        if (debitPhase && !state.busy) bankNotices(subscription)
                     }
                 }
             }
@@ -195,32 +180,49 @@ import com.simple.mobile.presentation.FlowProgress
     }
 }
 
-@Composable private fun RechargeLineSelector(dashboard: DashboardState, selected: Int, onSelect: (Int) -> Unit) {
+@Composable private fun RechargeLineSelector(dashboard: DashboardState, selected: Int, source: Boolean = false, onSelect: (Int) -> Unit) {
     var expanded by remember { mutableStateOf(false) }
     val destination = dashboard.displayLines.firstOrNull { it.subscription == selected }
     val phone = dashboard.linePhones[selected].orEmpty()
-    Text("Línea que recibe la recarga", style = MaterialTheme.typography.titleSmall)
+    Text(if (source) "SIM del banco" else "Línea de destino", style = MaterialTheme.typography.titleSmall)
     Box(Modifier.fillMaxWidth()) {
         OutlinedButton(onClick = { expanded = true }, modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp),
             shape = MaterialTheme.shapes.large) {
             Column(Modifier.weight(1f), horizontalAlignment = Alignment.Start) {
                 Text(destination?.label ?: "Seleccionar línea")
-                Text(if (phone.isBlank()) "Número sin configurar" else "+53 $phone", style = MaterialTheme.typography.bodySmall)
+                Text(if (source) "SIM ${destination?.slot?.plus(1) ?: "—"}" else if (phone.isBlank()) "Número sin configurar" else "+53 $phone", style = MaterialTheme.typography.bodySmall)
             }
             Icon(Icons.Outlined.ExpandMore, null)
         }
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            dashboard.displayLines.forEach { line ->
+            dashboard.displayLines.filter { !source || (it.active && it.cubacel) }.forEach { line ->
                 DropdownMenuItem(text = {
                     Column {
                         Text(line.label)
-                        Text(dashboard.linePhones[line.subscription]?.let { "+53 $it" } ?: "Número sin configurar", style = MaterialTheme.typography.bodySmall)
+                        Text(if (source) "SIM ${line.slot + 1}" else dashboard.linePhones[line.subscription]?.let { "+53 $it" } ?: "Número sin configurar", style = MaterialTheme.typography.bodySmall)
                     }
                 }, onClick = { onSelect(line.subscription); expanded = false },
                     leadingIcon = { if (line.subscription == selected) Icon(Icons.Outlined.Check, null) })
             }
         }
     }
-    if (phone.isBlank()) Text("Guarda el número una sola vez en Ajustes → Editar línea para poder recargarla.",
+    if (!source && phone.isBlank()) Text("Guarda el número una sola vez en Ajustes → Editar línea para poder recargarla.",
         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+}
+
+@Composable private fun RechargeBankSelector() {
+    var expanded by remember { mutableStateOf(false) }
+    Text("Banco", style = MaterialTheme.typography.titleSmall)
+    Box(Modifier.fillMaxWidth()) {
+        OutlinedButton(onClick = { expanded = true }, modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp), shape = MaterialTheme.shapes.large) {
+            Icon(Icons.Outlined.AccountBalance, null)
+            Text("Metropolitano", Modifier.weight(1f).padding(horizontal = 12.dp))
+            Icon(Icons.Outlined.ExpandMore, null)
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            DropdownMenuItem(text = { Text("Metropolitano · CUP") }, onClick = { expanded = false }, leadingIcon = { Icon(Icons.Outlined.Check, null) })
+            DropdownMenuItem(text = { Text("BPA · próximamente") }, onClick = {}, enabled = false)
+            DropdownMenuItem(text = { Text("BANDEC · próximamente") }, onClick = {}, enabled = false)
+        }
+    }
 }

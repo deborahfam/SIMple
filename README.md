@@ -313,7 +313,7 @@ integer amounts from 1 to 360 CUP are supported; the operator enforces available
 
 Authentication and debit require separate actions. The user enters the four-digit bank PIN,
 then checks the PAGOxMOVIL authentication confirmation before explicitly confirming the
-reviewed amount and destination. Review expires after five minutes. The PIN is only persisted when explicitly requested, encrypted with an authentication-bound Android Keystore key scoped to the paying SIM. Saving and unlocking require the device lock credential; deleting the line also removes its saved PIN. Unlocking fills the form without sending any bank request;
+reviewed amount and destination. Review expires after five minutes. The PIN is only persisted when explicitly requested, encrypted with an Android Keystore key scoped to the paying SIM. Opting in allows automatic PIN loading without further device authentication; existing authentication-bound PINs require a one-time unlock to migrate; deleting the line also removes its saved PIN. Unlocking fills the form without sending any bank request;
 the screen blocks screenshots. Each intent is encrypted with Android Keystore before dispatch.
 Restarts and uncertain responses never trigger a retry. A USSD response is displayed verbatim
 and is not interpreted as payment success or a reason to deduct a local balance.

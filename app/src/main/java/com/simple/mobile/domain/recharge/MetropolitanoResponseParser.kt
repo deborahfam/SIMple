@@ -15,7 +15,7 @@ object MetropolitanoResponseParser {
     data class QuotaRejection(val destination: String, val limitCup: BigDecimal, val afterDate: LocalDate)
     private val dateFormat = DateTimeFormatter.ofPattern("dd-MM-uuuu").withResolverStyle(ResolverStyle.STRICT)
     private val quota = Regex(
-        "fallo la recarga del movil (?:\\+?53)?(5[0-9]{7}) alcanzo el monto limite de recarga permitido en 30 dias " +
+        "fallo la recarga del movil (?:\\+?53)?([56][0-9]{7}) alcanzo el monto limite de recarga permitido en 30 dias " +
             "\\(([0-9]{1,6}(?:[.,][0-9]{1,2})?) cup\\), puede recargar posterior al dia ([0-9]{2}-[0-9]{2}-[0-9]{4})\\.?"
     )
     private const val PROCESSING = "su solicitud esta siendo procesada, espere un sms con los datos solicitados y detalles de la transaccion realizada"

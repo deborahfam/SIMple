@@ -25,7 +25,7 @@ object RechargeSimulation {
     }
     fun prepare(subscription: Int, line: String, bank: Bank, phone: String, cup: String, now: Long): Attempt {
         require(subscription >= 0) { "Selecciona una SIM para la prueba." }
-        require(Regex("5[0-9]{7}").matches(phone)) { "Usa un número de prueba de 8 dígitos que empiece por 5." }
+        require(Regex("[56][0-9]{7}").matches(phone)) { "Usa un número de prueba de 8 dígitos que empiece por 5 o 6." }
         return Attempt(UUID.randomUUID().toString(), subscription, line, bank, phone,
             requireNotNull(amount(cup)) { "Escribe un importe positivo en CUP, con hasta dos decimales." }, now)
     }

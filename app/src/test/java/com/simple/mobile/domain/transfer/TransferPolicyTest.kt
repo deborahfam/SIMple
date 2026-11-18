@@ -4,6 +4,10 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class TransferPolicyTest {
+    @Test fun acceptsSixPrefixWithCountryCode() {
+        assertEquals("61234567", TransferPolicy.phone("+53 6123-4567"))
+    }
+
     @Test fun normalizesLocalAndInternationalMobileNumbers() {
         listOf("51234567", "+53 5123-4567", "0053 (5123) 4567").forEach { assertEquals("51234567", TransferPolicy.phone(it)) }
     }

@@ -28,6 +28,13 @@ class MetropolitanoProtocolTest {
         listOf("", "0", "361", "120.00", "1,5", "1*54", "-1", "999999").forEach { assertNull(MetropolitanoProtocol.amount(it)) }
         assertNull(MetropolitanoProtocol.amount("0120"))
     }
+    @Test fun acceptsMobileNumbersStartingWithFiveOrSix() {
+        listOf("55500000", "65500000").forEach { phone ->
+            assertEquals(phone, MetropolitanoProtocol.phone(phone))
+            assertTrue(MetropolitanoProtocol.recharge(phone, "360").startsWith("*444*54*"))
+        }
+        assertNull(MetropolitanoProtocol.phone("75500000"))
+    }
     @Test fun inputValidationAndCanonicalAmount() {
         assertEquals("1", MetropolitanoProtocol.amount("001"))
         assertEquals("360", MetropolitanoProtocol.amount("360"))

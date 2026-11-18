@@ -57,7 +57,7 @@ class EncryptedReadingStore(context: Context, name: String = "readings.db") : SQ
     }.toMap()
     @Synchronized fun saveLineProfile(subscription: Int, nickname: String, phone: String) {
         require(subscription >= 0 && nickname.length <= 40 && nickname.none { it.isISOControl() })
-        require(phone.isEmpty() || Regex("5[0-9]{7}").matches(phone))
+        require(phone.isEmpty() || Regex("[56][0-9]{7}").matches(phone))
         updateProfile(subscription) { json ->
             json.put("nickname", nickname.trim())
             if (phone.isEmpty()) json.remove("phone") else json.put("phone", phone)

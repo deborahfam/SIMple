@@ -8,6 +8,9 @@ import java.time.LocalDate
 class MetropolitanoResponseParserTest {
     // Observed PAGOxMOVIL format; the destination has been replaced with fictitious digits.
     private val rejection = "Fallo la recarga del movil 5355500000 alcanzo el monto limite de recarga permitido en 30 dias (360 CUP), puede recargar posterior al dia 14-12-2026."
+    @Test fun acceptsSixPrefixInBankNotice() {
+        assertEquals("65500000", MetropolitanoResponseParser.quotaRejection("PAGOxMOVIL", rejection.replace("5355500000", "+5365500000"))?.destination)
+    }
     @Test fun extractsQuotaAndAfterDateWithoutInventingPaymentAmount() {
         val result = MetropolitanoResponseParser.quotaRejection("PAGOxMOVIL", rejection)!!
         assertEquals("55500000", result.destination)

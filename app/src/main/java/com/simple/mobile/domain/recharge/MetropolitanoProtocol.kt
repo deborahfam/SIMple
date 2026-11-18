@@ -14,7 +14,7 @@ object MetropolitanoProtocol {
         92,60,48,64,28,46,31,96,15,63,98,50,71,43,95,58,94,25,51,19,67,83,29,42,10,34,86,93,77,79,
         8,69,81,97,40,2,4,91,99,75,13,33,90,88,30,49,85,87,66,38,72,56,45,78,54,37,26,61,14,73,
         68,7,59,5,17,62,18,55,44,89,9,0,39,22,32,74,35,27,57,41)
-    fun phone(value: String): String? = value.trim().takeIf { Regex("5[0-9]{7}").matches(it) }
+    fun phone(value: String): String? = value.trim().takeIf { Regex("[56][0-9]{7}").matches(it) }
     fun amount(value: String): String? = value.trim().takeIf { Regex("[0-9]{1,3}").matches(it) }
         ?.toIntOrNull()?.takeIf { it in 1..360 }?.toString()
     fun validPin(pin: CharArray) = pin.size == 4 && pin.all { it in '0'..'9' }

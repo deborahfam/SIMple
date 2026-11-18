@@ -103,7 +103,7 @@ import com.simple.mobile.domain.transfer.*
                         OutlinedTextField(value = name, onValueChange = { name = it.filterNot(Char::isISOControl).take(40) },
                             label = { Text("Nombre o apodo") }, singleLine = true, enabled = writable, modifier = Modifier.fillMaxWidth())
                         OutlinedTextField(value = phone, onValueChange = { phone = it.take(30) }, label = { Text("Número Cubacel") },
-                            supportingText = { Text("8 dígitos, empieza por 5. También puedes usar +53.") },
+                            supportingText = { Text("8 dígitos, empieza por 5 o 6. También puedes usar +53.") },
                             isError = phone.isNotBlank() && validPhone == null, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
                             singleLine = true, enabled = writable, modifier = Modifier.fillMaxWidth())
                         Row(verticalAlignment = Alignment.CenterVertically) {
