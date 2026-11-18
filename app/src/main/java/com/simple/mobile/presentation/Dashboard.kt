@@ -276,19 +276,22 @@ private val Navy = Color(0xFF35234F)
                                 balance?.expiresAt()?.let { Text(expirationLabel(it, now), color = Color(0xFFDDCEED), fontSize = 12.sp) }
                                 HorizontalDivider(color = Color.White.copy(alpha = 0.2f), modifier = Modifier.padding(vertical = 4.dp))
                                 val general = data?.bundles()?.firstOrNull { it.kind() == "general" }
-                                Column(Modifier.fillMaxWidth()) {
-                                    SimResource("Internet", general?.let { if (it.unlimited()) "Ilimitado" else "${gb(it.bytes())} GB" } ?: "—",
-                                        Icons.Outlined.DataUsage, enabled, data, now, state.isQuerying(CubacelQuery.DATA),
-                                        general?.expiresAt() ?: data?.expiresAt()) { onQuery(CubacelQuery.DATA) }
-                                    HorizontalDivider(color = Color.White.copy(alpha = 0.10f), modifier = Modifier.padding(start = 36.dp))
-                                    SimResource("Minutos", voice?.voiceSeconds()?.let { "${number(BigDecimal(it).divide(BigDecimal(60), 2, java.math.RoundingMode.DOWN))} min" } ?: "—",
-                                        Icons.Outlined.Call, enabled, voice, now, state.isQuerying(CubacelQuery.VOICE)) { onQuery(CubacelQuery.VOICE) }
-                                    HorizontalDivider(color = Color.White.copy(alpha = 0.10f), modifier = Modifier.padding(start = 36.dp))
-                                    SimResource("Mensajes", sms?.smsCount()?.let { "$it SMS" } ?: "—", Icons.Outlined.Sms,
-                                        enabled, sms, now, state.isQuerying(CubacelQuery.SMS)) { onQuery(CubacelQuery.SMS) }
-                                    HorizontalDivider(color = Color.White.copy(alpha = 0.10f), modifier = Modifier.padding(start = 36.dp))
-                                    SimResource("Bonos", bonus?.let { "${it.bundles().size} bolsas" } ?: "—", Icons.Outlined.Redeem,
-                                        enabled, bonus, now, state.isQuerying(CubacelQuery.BONUSES_AND_USD_PLANS)) { onQuery(CubacelQuery.BONUSES_AND_USD_PLANS) }
+                                Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    Row(Modifier.fillMaxWidth().height(IntrinsicSize.Max), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                        SimResource("Internet", general?.let { if (it.unlimited()) "Ilimitado" else "${gb(it.bytes())} GB" } ?: "—",
+                                            Icons.Outlined.DataUsage, enabled, data, now, state.isQuerying(CubacelQuery.DATA),
+                                            expiry = general?.expiresAt() ?: data?.expiresAt(), modifier = Modifier.weight(1f).fillMaxHeight()) { onQuery(CubacelQuery.DATA) }
+                                        SimResource("Minutos", voice?.voiceSeconds()?.let { "${number(BigDecimal(it).divide(BigDecimal(60), 2, java.math.RoundingMode.DOWN))} min" } ?: "—",
+                                            Icons.Outlined.Call, enabled, voice, now, state.isQuerying(CubacelQuery.VOICE),
+                                            modifier = Modifier.weight(1f).fillMaxHeight(),
+                                            note = voice?.voiceSeconds()?.let { "≈ ${number(BigDecimal(it).divide(BigDecimal(3600), 1, java.math.RoundingMode.HALF_UP))} h" }) { onQuery(CubacelQuery.VOICE) }
+                                    }
+                                    Row(Modifier.fillMaxWidth().height(IntrinsicSize.Max), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                        SimResource("Mensajes", sms?.smsCount()?.let { "$it SMS" } ?: "—", Icons.Outlined.Sms,
+                                            enabled, sms, now, state.isQuerying(CubacelQuery.SMS), modifier = Modifier.weight(1f).fillMaxHeight()) { onQuery(CubacelQuery.SMS) }
+                                        SimResource("Bonos", bonus?.let { "${it.bundles().size} bolsas" } ?: "—", Icons.Outlined.Redeem,
+                                            enabled, bonus, now, state.isQuerying(CubacelQuery.BONUSES_AND_USD_PLANS), modifier = Modifier.weight(1f).fillMaxHeight()) { onQuery(CubacelQuery.BONUSES_AND_USD_PLANS) }
+                                    }
                                 }
                                 val bundleReadings = listOfNotNull(data, bonus)
                                 run {
@@ -637,7 +640,7 @@ private fun rechargeDate(at: Long) = SimpleDateFormat("d 'de' MMMM 'de' yyyy", L
 }
 @Composable private fun SimResource(title: String, value: String, icon: ImageVector,
     enabled: Boolean, reading: CarrierReading?, now: Long, querying: Boolean,
-    expiry: Long? = reading?.expiresAt(), action: () -> Unit) {
+    expiry: Long? = reading?.expiresAt(), modifier: Modifier = Modifier, note: String? = null, action: () -> Unit) {
     val expired = isExpired(expiry, now)
     val secondary = Color(0xFFDDCEED)
     val detail = when {
@@ -646,38 +649,22 @@ private fun rechargeDate(at: Long) = SimpleDateFormat("d 'de' MMMM 'de' yyyy", L
         expiry != null -> expirationLabel(expiry, now)
         else -> freshnessLabel(reading.receivedAt(), now)
     }
-    BoxWithConstraints(Modifier.fillMaxWidth()) {
-        val stacked = maxWidth < 240.dp || LocalDensity.current.fontScale > 1.3f
-        Row(Modifier.fillMaxWidth().heightIn(min = 64.dp).clip(RoundedCornerShape(10.dp))
-            .clickable(enabled = enabled, role = Role.Button, onClickLabel = "Consultar $title", onClick = action)
-            .semantics(mergeDescendants = true) {
-                contentDescription = "$title: $value. " +
-                    (if (querying) "Consultando." else reading?.let { freshnessLabel(it.receivedAt(), now) } ?: "Sin lectura.") +
-                    (expiry?.let { " ${expirationLabel(it, now)}" } ?: "")
-            }.padding(vertical = 12.dp), verticalAlignment = Alignment.Top) {
-            Box(Modifier.size(24.dp), contentAlignment = Alignment.Center) {
-                if (querying) CircularProgressIndicator(Modifier.size(18.dp), color = Mint, strokeWidth = 2.dp)
-                else Icon(icon, null, tint = secondary, modifier = Modifier.size(20.dp))
-            }
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                if (stacked) {
-                    Text(title, color = secondary, fontSize = 14.sp)
-                    Text(value, color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 18.sp,
-                        style = MaterialTheme.typography.titleMedium.copy(fontFeatureSettings = "tnum"))
-                } else {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        verticalAlignment = Alignment.CenterVertically) {
-                        Text(title, color = secondary, fontSize = 14.sp, modifier = Modifier.weight(1f))
-                        Text(value, color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 18.sp,
-                            modifier = Modifier.weight(1f), textAlign = androidx.compose.ui.text.style.TextAlign.End,
-                            style = MaterialTheme.typography.titleMedium.copy(fontFeatureSettings = "tnum"))
-                    }
-                }
-                Text(detail, color = if (expired && !querying) Color(0xFFFFC4BA) else secondary,
-                    fontSize = 12.sp, lineHeight = 16.sp)
-            }
+    Column(modifier.clip(RoundedCornerShape(18.dp)).background(Color.White.copy(alpha = 0.07f))
+        .clickable(enabled = enabled, role = Role.Button, onClickLabel = "Consultar $title", onClick = action)
+        .semantics(mergeDescendants = true) {
+            contentDescription = "$title: $value. " + (note?.let { "$it. " } ?: "") + detail
+        }.padding(12.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            if (querying) CircularProgressIndicator(Modifier.size(16.dp), color = Mint, strokeWidth = 2.dp)
+            else Icon(icon, null, tint = Mint, modifier = Modifier.size(16.dp))
+            Text(title, color = secondary, fontSize = 12.sp, modifier = Modifier.weight(1f))
         }
+        Text(value, color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 20.sp,
+            style = MaterialTheme.typography.titleMedium.copy(fontFeatureSettings = "tnum"))
+        note?.let { Text(it, color = secondary, fontSize = 11.sp, lineHeight = 14.sp) }
+        Spacer(Modifier.weight(1f))
+        Text(detail, color = if (expired && !querying) Color(0xFFFFC4BA) else secondary,
+            fontSize = 10.sp, lineHeight = 13.sp)
     }
 }
 @Composable private fun SettingsRow(label: String, icon: ImageVector, action: () -> Unit) {
