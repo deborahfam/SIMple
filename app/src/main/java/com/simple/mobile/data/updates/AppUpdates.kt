@@ -22,20 +22,23 @@ class AppUpdates(app: Application) : AndroidViewModel(app) {
     private val mutable = MutableStateFlow(UpdateState())
     val state = mutable.asStateFlow()
     private val prefs = app.getSharedPreferences("update_preferences", android.content.Context.MODE_PRIVATE)
-    private val autoMutable = MutableStateFlow(prefs.getBoolean("automatic", false))
+    private val autoMutable = MutableStateFlow((BuildConfig.DIRECT_DISTRIBUTION && prefs.getBoolean("automatic", false)))
     val automatic = autoMutable.asStateFlow()
     fun setAutomatic(enabled: Boolean) {
+        if (!BuildConfig.DIRECT_DISTRIBUTION) return
         prefs.edit().putBoolean("automatic", enabled).apply()
         autoMutable.value = enabled
         if (enabled) checkOnOpen()
     }
     fun checkOnOpen() {
+        if (!BuildConfig.DIRECT_DISTRIBUTION) return
         val now = System.currentTimeMillis()
         val last = prefs.getLong("last_attempt", 0)
         if (autoMutable.value && !mutable.value.busy && (now < last || now - last >= 86_400_000L)) check()
     }
     val apk: File get() = File(getApplication<Application>().cacheDir, "updates/update.apk")
     fun check() {
+        if (!BuildConfig.DIRECT_DISTRIBUTION) return
         if (mutable.value.busy) return
         prefs.edit().putLong("last_attempt", System.currentTimeMillis()).apply()
         mutable.value = UpdateState(busy = true, message = "Buscando actualizaciones…")
@@ -65,6 +68,7 @@ class AppUpdates(app: Application) : AndroidViewModel(app) {
         }
     }
     fun download() {
+        if (!BuildConfig.DIRECT_DISTRIBUTION) return
         val release = mutable.value.release ?: return
         if (mutable.value.busy) return
         mutable.value = mutable.value.copy(busy = true, ready = false, message = "Descargando y verificando APK…")
@@ -96,6 +100,7 @@ class AppUpdates(app: Application) : AndroidViewModel(app) {
     }
     @Suppress("DEPRECATION")
     fun validate(expectedCode: Int) {
+        if (!BuildConfig.DIRECT_DISTRIBUTION) return
         val pm = getApplication<Application>().packageManager
         val candidate = pm.getPackageArchiveInfo(apk.path, PackageManager.GET_SIGNATURES) ?: error("El archivo no es un APK válido.")
         val current = pm.getPackageInfo(BuildConfig.APPLICATION_ID, PackageManager.GET_SIGNATURES)

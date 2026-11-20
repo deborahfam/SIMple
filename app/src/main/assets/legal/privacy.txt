@@ -1,0 +1,25 @@
+Política de privacidad de SIMple
+Actualizada: 20 de noviembre de 2026
+
+Responsable y contacto
+SIMple es un proyecto independiente creado por deborahfam: https://github.com/deborahfam. Código y contacto público: https://github.com/deborahfam/SIMple. No publiques números de teléfono, PIN, respuestas bancarias ni capturas con información privada en incidencias públicas. SIMple no está afiliado con ETECSA, Cubacel ni los bancos.
+
+Datos que se usan en el teléfono
+SIMple usa la información de las SIM y los permisos de teléfono para seleccionar una línea y enviar consultas USSD que tú solicitas. Puede guardar las lecturas reconocidas de saldo, recursos, fechas y compras, las etiquetas y números de líneas que introduces, los destinatarios que eliges y los estados de solicitudes de recarga. El selector de contactos solo entrega el contacto que seleccionas; SIMple no solicita acceso general a tu agenda.
+
+Si autorizas el acceso de uso en Android, SIMple consulta estadísticas de tráfico y aplicaciones para mostrar el consumo aproximado. Los recordatorios son locales y opcionales. Las preferencias y datos técnicos de configuración se guardan localmente; las lecturas, destinatarios e información de recargas se guardan cifrados con Android Keystore.
+
+SMS: solo en la edición de descarga directa
+La importación es opcional y necesita tu autorización. Se consultan mensajes de remitentes conocidos del operador; los avisos bancarios requieren activación adicional. Se guardan únicamente datos reconocidos, no los cuerpos originales de los SMS. El remitente de un SMS no garantiza autenticidad: revisa la confirmación del operador o banco. Puedes desactivar la importación y revocar sus permisos. La edición de Google Play no solicita permisos de SMS ni importa mensajes.
+
+PIN bancario y operaciones
+El PIN se envía mediante la función telefónica de Android al banco para la autenticación que solicitas. Solo se guarda si lo pides. Para guardarlo o cargarlo, SIMple solicita confirmar el bloqueo de Android y utiliza una clave cifrada que exige autenticación reciente. Los PIN guardados por versiones anteriores se eliminan y deben introducirse de nuevo. Cargar un PIN no envía un pago; cada operación requiere las acciones de confirmación de la aplicación. Las respuestas del banco pueden mostrarse temporalmente en pantalla.
+
+Conexiones y terceros
+SIMple no tiene cuentas, anuncios, analítica, telemetría ni un servidor del desarrollador que reciba tus datos. Las consultas y operaciones que solicitas se transmiten al operador o banco correspondiente, sujetos a sus propias políticas. La edición de descarga directa consulta GitHub para buscar y descargar actualizaciones cuando lo solicitas o cuando activas la comprobación opcional al abrir la app. GitHub recibe la dirección IP y datos técnicos de conexión, incluida la versión de SIMple; SIMple no le envía saldos, SMS, contactos ni PIN. La edición de Google Play no tiene el actualizador de GitHub ni permiso de Internet. Abrir enlaces externos usa tu navegador y se rige por la política del sitio visitado.
+
+Conservación y eliminación
+Los datos permanecen en el dispositivo hasta que los eliminas, se aplica el límite del historial o desinstalas la app. El historial de lecturas conserva hasta 300 registros legibles; otros registros tienen límites propios. Desde Ajustes puedes eliminar datos de una línea o de todas las líneas; esto también elimina sus PIN guardados y desactiva la importación SMS. Puedes eliminar el PIN por separado en la pantalla de recarga. Para borrar todos los datos y preferencias, usa Android → Aplicaciones → SIMple → Almacenamiento → Borrar almacenamiento. La app desactiva las copias de seguridad y la transferencia de sus datos a otro dispositivo. No hay cuentas remotas que debas eliminar.
+
+Tus opciones y seguridad
+Los permisos pueden revocarse desde Android. Las funciones que dependen de ellos dejarán de estar disponibles, pero puedes consultar lecturas locales. Protege tu teléfono con un bloqueo de pantalla y no compartas el PIN. El cifrado no garantiza protección en un teléfono comprometido o mientras otra persona controla una sesión desbloqueada. Los cambios en esta política se publicarán con una nueva fecha y se incluirán en la aplicación.

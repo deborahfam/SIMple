@@ -10,6 +10,7 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class SmsImportSettingsTest {
+    @org.junit.Before fun directEditionOnly() { org.junit.Assume.assumeTrue(BuildConfig.DIRECT_DISTRIBUTION) }
     private fun settings(): SmsImportSettings {
         val context = ApplicationProvider.getApplicationContext<Context>()
         context.getSharedPreferences("test-sms-settings", Context.MODE_PRIVATE).edit().clear().commit()

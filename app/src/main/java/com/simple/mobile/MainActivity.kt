@@ -84,6 +84,7 @@ class MainActivity : ComponentActivity() {
                 },
                 onNotificationSettings = { open(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, packageName)) },
                 onSmsEnabled = { enabled ->
+                    if (!BuildConfig.DIRECT_DISTRIBUTION) return@Dashboard
                     if (!enabled) model.disableSms()
                     else smsPermissions.launch(arrayOf(Manifest.permission.READ_PHONE_STATE, Manifest.permission.READ_SMS, Manifest.permission.RECEIVE_SMS))
                 },
@@ -132,6 +133,7 @@ class MainActivity : ComponentActivity() {
         }
     }
     private fun installUpdate() {
+        if (!BuildConfig.DIRECT_DISTRIBUTION) return
         if (!updates.state.value.ready) return
         if (!packageManager.canRequestPackageInstalls()) {
             open(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:$packageName")))

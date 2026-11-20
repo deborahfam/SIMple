@@ -19,8 +19,20 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     buildFeatures { compose = true; buildConfig = true }
+    flavorDimensions += "distribution"
+    productFlavors {
+        create("direct") {
+            dimension = "distribution"
+            buildConfigField("boolean", "DIRECT_DISTRIBUTION", "true")
+        }
+        create("play") {
+            dimension = "distribution"
+            buildConfigField("boolean", "DIRECT_DISTRIBUTION", "false")
+        }
+    }
     buildTypes {
         release {
+            isDebuggable = false
             isMinifyEnabled = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"))
         }
@@ -46,8 +58,25 @@ dependencies {
 
 // Builds an update compatible with locally installed debug APKs signed by this machine's key.
 tasks.register<Copy>("packageDebugUpdate") {
-    dependsOn("assembleDebug")
-    from(layout.buildDirectory.file("outputs/apk/debug/app-debug.apk"))
+    dependsOn("assembleDirectDebug")
+    from(layout.buildDirectory.file("outputs/apk/direct/debug/app-direct-debug.apk"))
     into(layout.buildDirectory.dir("outputs/updates"))
-    rename("app-debug.apk", "SIMple-${android.defaultConfig.versionCode}.apk")
+    rename("app-direct-debug.apk", "SIMple-${android.defaultConfig.versionCode}.apk")
+}
+
+
+// Keep bundled attribution inventory aligned with the artifacts actually shipped.
+afterEvaluate {
+val runtimeCoordinates = configurations.named("directReleaseRuntimeClasspath").map { configuration ->
+    configuration.resolvedConfiguration.resolvedArtifacts.map { it.moduleVersion.id.toString() }.distinct().sorted()
+}
+tasks.register("verifyLicenseInventory") {
+    inputs.property("runtimeCoordinates", runtimeCoordinates)
+    inputs.file(layout.projectDirectory.file("src/main/assets/legal/runtime-components.txt"))
+    doLast {
+        val expected = inputs.files.singleFile.readLines().filter { it.isNotBlank() }.sorted()
+        val actual = inputs.properties["runtimeCoordinates"] as List<*>
+        check(expected == actual) { "Runtime dependencies changed: review and update bundled license notices and inventory." }
+    }
+}
 }

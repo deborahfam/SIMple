@@ -11,3 +11,19 @@ local.properties
 
 # Python release tooling
 __pycache__/
+
+# Local credentials and private device captures
+.env
+.env.*
+!.env.example
+*.p12
+*.pfx
+*.pem
+*.key
+*.apk
+*.aab
+*.hprof
+*.log
+captures/
+
+.local/

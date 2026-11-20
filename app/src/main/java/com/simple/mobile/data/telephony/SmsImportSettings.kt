@@ -10,18 +10,20 @@ data class SmsSyncStatus(val enabled: Boolean = false, val syncing: Boolean = fa
 
 class SmsImportSettings(context: Context, preferenceName: String = "features") {
     private val prefs = context.getSharedPreferences(preferenceName, Context.MODE_PRIVATE)
-    private val mutable = MutableStateFlow(SmsSyncStatus(prefs.getBoolean("carrier_sms", false),
-        lastAt = prefs.getLong("sms_last_at", 0).takeIf { it > 0 }, lastAdded = prefs.getInt("sms_last_added", 0), bankEnabled = prefs.getBoolean("bank_sms", false)))
+    private val mutable = MutableStateFlow(SmsSyncStatus((com.simple.mobile.BuildConfig.DIRECT_DISTRIBUTION && prefs.getBoolean("carrier_sms", false)),
+        lastAt = prefs.getLong("sms_last_at", 0).takeIf { it > 0 }, lastAdded = prefs.getInt("sms_last_added", 0), bankEnabled = (com.simple.mobile.BuildConfig.DIRECT_DISTRIBUTION && prefs.getBoolean("bank_sms", false))))
     val state = mutable.asStateFlow()
     private var generation = 0L
     private var activeSync: Long? = null
 
     @Synchronized fun setEnabled(enabled: Boolean) {
+        if (enabled && !com.simple.mobile.BuildConfig.DIRECT_DISTRIBUTION) return
         if (enabled != mutable.value.enabled) generation++
         prefs.edit().putBoolean("carrier_sms", enabled).apply()
         mutable.value = mutable.value.copy(enabled = enabled, error = null)
     }
     @Synchronized fun setBankEnabled(enabled: Boolean) {
+        if (enabled && !com.simple.mobile.BuildConfig.DIRECT_DISTRIBUTION) return
         if (enabled != mutable.value.bankEnabled) generation++
         prefs.edit().putBoolean("bank_sms", enabled).remove("inbox_id").remove("inbox_scope").apply()
         mutable.value = mutable.value.copy(bankEnabled = enabled, error = null)

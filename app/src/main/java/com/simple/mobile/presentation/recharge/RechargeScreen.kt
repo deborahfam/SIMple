@@ -44,6 +44,14 @@ import com.simple.mobile.presentation.FlowProgress
     val phone = dashboard.linePhones[destination].orEmpty()
     var cup by rememberSaveable { mutableStateOf("360") }
     var pin by remember(subscription, attempt?.id) { mutableStateOf("") }
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_STOP) pin = ""
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer); pin = "" }
+    }
     var authConfirmed by remember(attempt?.id) { mutableStateOf(false) }
     var outcomeReviewed by remember(attempt?.id) { mutableStateOf(false) }
     val eligible = dashboard.lines.any { it.subscription == subscription && it.active && it.cubacel }

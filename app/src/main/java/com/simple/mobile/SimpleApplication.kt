@@ -55,7 +55,11 @@ class SimpleApplication : Application() {
     }
     override fun onCreate() {
         super.onCreate()
-        worker.execute { reconcileReminders(); refreshBankNotices() }
+        worker.execute {
+            try { com.simple.mobile.data.recharge.BankPinVault.removeLegacy(this) }
+            catch (_: Exception) { /* Vault access also retries cleanup and fails closed. */ }
+            reconcileReminders(); refreshBankNotices()
+        }
     }
     fun refreshReadings() { publishReadings(store.history()) }
     fun publishReadings(entries: List<EncryptedReadingStore.Entry>) {

@@ -56,20 +56,20 @@ Use JDK 17 and Android SDK Platform 36. Open the repository in Android Studio, o
 `ANDROID_HOME` to your SDK and run:
 
 ```sh
-./gradlew assembleDebug testDebugUnitTest lintDebug
-./gradlew assembleDebugAndroidTest
+./gradlew assembleDirectDebug testDirectDebugUnitTest lintDirectDebug
+./gradlew assembleDirectDebugAndroidTest
 ```
 
-Minimum Android: API 26. APK: `app/build/outputs/apk/debug/app-debug.apk`.
-Install with `adb -s <device> install -r app/build/outputs/apk/debug/app-debug.apk`.
+Minimum Android: API 26. APK: `app/build/outputs/apk/direct/debug/app-direct-debug.apk`.
+Install with `adb -s <device> install -r app/build/outputs/apk/direct/debug/app-direct-debug.apk`.
 Never run carrier queries on an emulator expecting real balances.
 
 The instrumentation test validates parser-to-database persistence, reopening, separate SIM data,
 encrypted payloads, and deletion. Run it on a dedicated emulator:
 
 ```sh
-adb -s <emulator> install -r app/build/outputs/apk/debug/app-debug.apk
-adb -s <emulator> install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+adb -s <emulator> install -r app/build/outputs/apk/direct/debug/app-direct-debug.apk
+adb -s <emulator> install -r app/build/outputs/apk/androidTest/direct/debug/app-direct-debug-androidTest.apk
 adb -s <emulator> shell am instrument -w com.simple.mobile.test/androidx.test.runner.AndroidJUnitRunner
 ```
 
@@ -181,8 +181,8 @@ Pushing application, build, release-script or workflow changes to `main` starts
 Documentation and Pencil-only changes do not publish an APK; implement designs in the app first.
 You can also run the workflow manually from GitHub Actions on `main`.
 
-The workflow runs versioning tests, Android unit tests and lint, builds an APK, signs it with
-the existing installation key, verifies the certificate, and publishes a stable GitHub Release
+The workflow runs versioning tests, release-variant Android unit tests and lint, builds a non-debuggable release APK, signs it with
+the existing installation key, verifies the certificate and rejects debuggable APKs, then publishes a stable GitHub Release
 with `SIMple-N.apk` and `SHA256SUMS.txt`. Failed checks never publish an update.
 Android versionCode and the patch version increase automatically from existing releases;
 a higher base version in `app/build.gradle.kts` can start a new minor/major version.
@@ -212,9 +212,10 @@ For a local build with a specific published version:
 Use the same signing key as the installed app. Local default versions remain the source base
 version; official automatic release versions are recorded in GitHub Releases.
 
-Production releases should instead use a protected, stable release signing key and upload the
-signed release APK with the same naming convention. Never commit a signing key. A debug APK
-cannot update a release-signed installation, or vice versa. Do not uninstall to bypass a signature
+Production releases must use a protected, stable signing key. The workflow now builds the
+release variant, while retaining the configured signing certificate for update compatibility.
+Never commit a signing key. Compatibility depends on the signing certificate, not the build
+variant: debug and release builds signed with different keys cannot update each other. Do not uninstall to bypass a signature
 mismatch: doing so removes local history and its encryption key. Signing-key rotation is not
 supported by this updater's conservative certificate equality check.
 
@@ -313,7 +314,7 @@ integer amounts from 1 to 360 CUP are supported; the operator enforces available
 
 Authentication and debit require separate actions. The user enters the four-digit bank PIN,
 then checks the PAGOxMOVIL authentication confirmation before explicitly confirming the
-reviewed amount and destination. Review expires after five minutes. The PIN is only persisted when explicitly requested, encrypted with an Android Keystore key scoped to the paying SIM. Opting in allows automatic PIN loading without further device authentication; existing authentication-bound PINs require a one-time unlock to migrate; deleting the line also removes its saved PIN. Unlocking fills the form without sending any bank request;
+reviewed amount and destination. Review expires after five minutes. The PIN is only persisted when explicitly requested, encrypted with an Android Keystore key scoped to the paying SIM. Saving and loading require an explicit Android device-credential prompt and an authentication-bound Keystore key with a 15-second authorization window. Older saved PINs and their keys are removed without decryption; users must enter and save them again; deleting the line also removes its saved PIN. Unlocking fills the form without sending any bank request;
 the screen blocks screenshots. Each intent is encrypted with Android Keystore before dispatch.
 Restarts and uncertain responses never trigger a retry. A USSD response is displayed verbatim
 and is not interpreted as payment success or a reason to deduct a local balance.
@@ -384,3 +385,26 @@ checks encrypted persistence and tamper rejection. These checks do not execute c
 
 Source: https://www.etecsa.cu/es/movil/planes-personales
 Published price image: https://www.etecsa.cu/sites/default/files/inline-images/1.%20900X510.jpg
+
+
+## Creator, privacy and distribution
+
+Copyright © 2026 deborahfam. SIMple is licensed under [Apache License 2.0](LICENSE).
+Created by [deborahfam](https://github.com/deborahfam). **Ajustes → Acerca de SIMple** includes
+credits, a complete offline privacy policy and open-source license notices. This independent
+project is not affiliated with ETECSA, Cubacel or any bank.
+
+- `direct`: optional SMS import and GitHub APK updates. Build with `assembleDirectRelease`.
+- `play`: no SMS permissions, Internet permission, update provider or APK installation
+  permission. SMS import and GitHub update entry points are disabled even if old preferences
+  enabled them. Build an upload bundle with `bundlePlayRelease`. Updates come from Google Play.
+
+Both variants use `com.simple.mobile`; switching between them requires compatible signing.
+Release builds are not debuggable, cleartext HTTP is blocked and backups are disabled.
+The publishing workflow tests both variants and rejects debug signing certificates.
+Run `python3 scripts/verify_distribution.py` after building to verify the merged manifests.
+
+The publishable privacy page is [docs/privacy.html](docs/privacy.html); publish it at a stable,
+public HTTPS URL and enter that URL in Play Console before submission. Its offline source is
+`app/src/main/assets/legal/privacy.txt`. Keep the page and bundled text synchronized.
+See [publication steps and remaining approvals](docs/PUBLISHING.md).

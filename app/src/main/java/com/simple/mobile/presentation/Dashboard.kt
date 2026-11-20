@@ -474,7 +474,7 @@ private val Navy = Color(0xFF35234F)
                                 SettingsRow("Permisos de la aplicación", Icons.Outlined.Security, onAppSettings)
                             }
                         }
-                        item { SmsConnectionCard(state, onSmsEnabled, onSyncSms, onAppSettings, onRescanSms) }
+                        if (com.simple.mobile.BuildConfig.DIRECT_DISTRIBUTION) item { SmsConnectionCard(state, onSmsEnabled, onSyncSms, onAppSettings, onRescanSms) }
                         item {
                             WhiteCard {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -504,7 +504,7 @@ private val Navy = Color(0xFF35234F)
                                 Text("La SIM y el historial se asocian al registro local de Android. Si sustituyes una tarjeta, elimina su historial para evitar mezclar lecturas.", fontSize = 11.sp, color = Muted)
                             }
                         }
-                        item {
+                        if (com.simple.mobile.BuildConfig.DIRECT_DISTRIBUTION) item {
                             WhiteCard {
                                 Text("Actualizar SIMple", fontWeight = FontWeight.Bold, fontSize = 18.sp)
                                 Text("Versión ${com.simple.mobile.BuildConfig.VERSION_NAME} (${com.simple.mobile.BuildConfig.VERSION_CODE})", color = Muted)
@@ -521,9 +521,10 @@ private val Navy = Color(0xFF35234F)
                                 if (update.ready) Button(onClick = onInstallUpdate, enabled = !update.busy) { Text("Instalar actualización") }
                             }
                         }
+                        item { AboutCard() }
                         item {
                             Text("SIMple ${com.simple.mobile.BuildConfig.VERSION_NAME}", fontSize = 12.sp, color = Muted)
-                            Text("Las consultas necesitan una SIM Cubacel y cobertura. Los SMS del operador se importan solo si autorizas los permisos. Los anuncios y mensajes personales no se guardan.", fontSize = 12.sp, color = Muted)
+                            Text("Las consultas necesitan una SIM Cubacel y cobertura. Consulta los SMS de confirmación en tu aplicación de mensajes.", fontSize = 12.sp, color = Muted)
                         }
                     }
                 }
@@ -552,7 +553,7 @@ private val Navy = Color(0xFF35234F)
         if (buyPlans) com.simple.mobile.presentation.plans.PlanShopScreen(state, model,
             onClose = { buyPlans = false }, onPermissions = onConnect, onRefresh = onRefreshAll)
         if (rechargeOpen) com.simple.mobile.presentation.recharge.RechargeScreen(state, onClose = { rechargeOpen = false }, onPermissions = onConnect) { subscription ->
-            com.simple.mobile.presentation.recharge.BankRechargeNotices(state.copy(selected = subscription),
+            if (com.simple.mobile.BuildConfig.DIRECT_DISTRIBUTION) com.simple.mobile.presentation.recharge.BankRechargeNotices(state.copy(selected = subscription),
                 onEnabled = { enabled -> model.setBankSms(enabled); if (enabled) onSmsEnabled(true) },
                 onSync = onRescanSms)
         }
