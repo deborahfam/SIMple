@@ -188,11 +188,12 @@ import com.simple.mobile.presentation.FlowProgress
     }
 }
 
-@Composable internal fun RechargeLineSelector(dashboard: DashboardState, selected: Int, source: Boolean = false, onSelect: (Int) -> Unit) {
+@Composable internal fun RechargeLineSelector(dashboard: DashboardState, selected: Int, source: Boolean = false,
+    title: String = if (source) "SIM del banco" else "Línea de destino", onSelect: (Int) -> Unit) {
     var expanded by remember { mutableStateOf(false) }
     val destination = dashboard.displayLines.firstOrNull { it.subscription == selected }
     val phone = dashboard.linePhones[selected].orEmpty()
-    Text(if (source) "SIM del banco" else "Línea de destino", style = MaterialTheme.typography.titleSmall)
+    Text(title, style = MaterialTheme.typography.titleSmall)
     Box(Modifier.fillMaxWidth()) {
         OutlinedButton(onClick = { expanded = true }, modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp),
             shape = MaterialTheme.shapes.large) {

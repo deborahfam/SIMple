@@ -1,5 +1,7 @@
 package com.simple.mobile.presentation.plans
 
+import androidx.activity.compose.BackHandler
+import com.simple.mobile.presentation.recharge.RechargeLineSelector
 import android.Manifest
 import android.content.pm.PackageManager
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -36,12 +38,21 @@ import com.simple.mobile.presentation.DetailDisclosure
 @Composable internal fun PlanPurchaseContent(state: DashboardState, model: DashboardViewModel, onClose: () -> Unit,
     onPermissions: () -> Unit, onRefresh: () -> Unit, onCategories: (() -> Unit)? = null) {
     val purchase by model.purchases.state.collectAsStateWithLifecycle()
-    val initialSubscription by rememberSaveable { mutableIntStateOf(state.selected) }
+    var selectedSubscription by rememberSaveable { mutableIntStateOf(state.selected) }
     var selectedId by rememberSaveable { mutableStateOf<String?>(null) }
     var reviewing by rememberSaveable { mutableStateOf(false) }
     var acknowledged by rememberSaveable(purchase.attempt?.id) { mutableStateOf(false) }
     val attempt = purchase.attempt
-    val subscription = attempt?.subscription ?: initialSubscription
+    val back: () -> Unit = {
+        when {
+            attempt != null -> onClose()
+            reviewing -> reviewing = false
+            onCategories != null -> onCategories()
+            else -> onClose()
+        }
+    }
+    BackHandler(onBack = back)
+    val subscription = attempt?.subscription ?: selectedSubscription
     val plan = PlanCatalog.plans.firstOrNull { it.id == (attempt?.planId ?: selectedId) }
     val line = state.displayLines.firstOrNull { it.subscription == subscription }
     val eligible = state.lines.any { it.subscription == subscription && it.active && it.cubacel }
@@ -63,9 +74,9 @@ import com.simple.mobile.presentation.DetailDisclosure
         Scaffold(Modifier.fillMaxSize().safeDrawingPadding(), contentWindowInsets = WindowInsets(0, 0, 0, 0), topBar = {
             Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 if (reviewing && attempt == null) {
-                    IconButton(onClick = { reviewing = false }) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Volver a elegir plan") }
+                    IconButton(onClick = back) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Volver a elegir plan") }
                 } else if (attempt == null && onCategories != null) {
-                    IconButton(onClick = onCategories) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Volver a categorías") }
+                    IconButton(onClick = back) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Volver a categorías") }
                 }
                 Text(if (attempt != null) "Tu solicitud" else if (reviewing) "Revisar compra" else "Comprar planes", modifier = Modifier.weight(1f).semantics { heading() }, style = MaterialTheme.typography.titleLarge)
                 IconButton(onClick = onClose) { Icon(Icons.Outlined.Close, "Cerrar planes") }
@@ -98,6 +109,11 @@ import com.simple.mobile.presentation.DetailDisclosure
             Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.TopCenter) {
                 Column(Modifier.widthIn(max = 600.dp).fillMaxWidth().verticalScroll(scroll).padding(horizontal = 20.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     FlowProgress(step, listOf("Elige tu plan", "Revisa tu compra", "Tu resultado"))
+                    if (attempt == null && !reviewing) {
+                        RechargeLineSelector(state, selectedSubscription, source = true, title = "SIM para comprar datos") {
+                            selectedSubscription = it
+                        }
+                    }
                     Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.medium) {
                         Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             Icon(Icons.Outlined.SimCard, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
@@ -109,7 +125,7 @@ import com.simple.mobile.presentation.DetailDisclosure
                     }
                     purchase.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                     if (!purchase.ready && purchase.error == null) LinearProgressIndicator(Modifier.fillMaxWidth())
-                    if (!eligible && attempt == null) Text("Selecciona una SIM Cubacel activa en Inicio para comprar.", color = MaterialTheme.colorScheme.error)
+                    if (!eligible && attempt == null) Text("Selecciona una SIM Cubacel activa para comprar.", color = MaterialTheme.colorScheme.error)
                     if (state.busy && attempt == null) Text("Espera a que termine la consulta en curso.")
                     if (!state.storageReady && attempt == null) Text("Reintenta el almacenamiento desde Ajustes antes de comprar.", color = MaterialTheme.colorScheme.error)
                     if (attempt != null) {

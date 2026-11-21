@@ -50,6 +50,16 @@ import com.simple.mobile.presentation.recharge.RechargeLineSelector
     var error by rememberSaveable(route) { mutableStateOf<String?>(null) }
     val phone = state.linePhones[destination].orEmpty()
     val offer = category?.let { BankPlanCatalog.offers(it).firstOrNull { offer -> offer.option == option } }
+    val blockedReason = when {
+        !state.storageReady -> "Reintenta el almacenamiento desde Ajustes antes de continuar."
+        state.busy -> "Espera a que termine la consulta en curso."
+        state.managingLine -> "Espera a que termine de guardarse la línea."
+        purchase.busy -> "Espera a que termine la compra en curso."
+        phone.isBlank() -> "Añade el número de esta línea en Ajustes → Editar línea."
+        MetropolitanoProtocol.phone(phone) == null -> "Corrige el número en Ajustes → Editar línea: debe ser un móvil cubano válido."
+        offer == null -> "Selecciona un plan para continuar."
+        else -> null
+    }
     val context = LocalContext.current
     val scroll = rememberScrollState()
     LaunchedEffect(route, reviewing, opened) { scroll.scrollTo(0) }
@@ -74,7 +84,11 @@ import com.simple.mobile.presentation.recharge.RechargeLineSelector
                     }
                 }, bottomBar = {
                     if (category != null) Surface(shadowElevation = 8.dp) {
-                        Box(Modifier.fillMaxWidth().padding(20.dp), contentAlignment = Alignment.Center) {
+                        Column(Modifier.fillMaxWidth().padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            if (!opened && blockedReason != null) Text(blockedReason,
+                                modifier = Modifier.widthIn(max = 560.dp).fillMaxWidth(),
+                                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Button(onClick = {
                                 error = null
                                 when {
@@ -93,8 +107,7 @@ import com.simple.mobile.presentation.recharge.RechargeLineSelector
                                         error = "Comprueba el número de la línea en Ajustes."
                                     }
                                 }
-                            }, enabled = opened || (offer != null && MetropolitanoProtocol.phone(phone) != null &&
-                                state.storageReady && !state.busy && !state.managingLine && !purchase.busy),
+                            }, enabled = opened || blockedReason == null,
                                 modifier = Modifier.widthIn(max = 560.dp).fillMaxWidth().heightIn(min = 52.dp)) {
                                 Text(when { opened -> "Volver a mi línea"; reviewing -> "Abrir menú del banco"; else -> "Continuar" })
                             }
