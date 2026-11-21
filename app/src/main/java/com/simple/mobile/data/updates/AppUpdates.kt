@@ -100,14 +100,23 @@ class AppUpdates(app: Application) : AndroidViewModel(app) {
     }
     @Suppress("DEPRECATION")
     fun validate(expectedCode: Int) {
-        if (!BuildConfig.DIRECT_DISTRIBUTION) return
+        check(BuildConfig.DIRECT_DISTRIBUTION) { "Las actualizaciones de esta edición se gestionan desde Google Play." }
         val pm = getApplication<Application>().packageManager
-        val candidate = pm.getPackageArchiveInfo(apk.path, PackageManager.GET_SIGNATURES) ?: error("El archivo no es un APK válido.")
-        val current = pm.getPackageInfo(BuildConfig.APPLICATION_ID, PackageManager.GET_SIGNATURES)
+        val flags = if (android.os.Build.VERSION.SDK_INT >= 28) PackageManager.GET_SIGNING_CERTIFICATES else PackageManager.GET_SIGNATURES
+        val candidate = pm.getPackageArchiveInfo(apk.path, flags) ?: error("El archivo no es un APK válido.")
+        val current = pm.getPackageInfo(BuildConfig.APPLICATION_ID, flags)
         check(candidate.packageName == BuildConfig.APPLICATION_ID && candidate.versionCode == expectedCode && candidate.versionCode > current.versionCode) { "El APK no corresponde a una actualización de SIMple." }
-        val installed = current.signatures?.map { it.toCharsString() }?.toSet().orEmpty()
-        val downloaded = candidate.signatures?.map { it.toCharsString() }?.toSet().orEmpty()
-        check(installed.isNotEmpty() && installed == downloaded) { "La firma no coincide con esta instalación. Solicita un APK firmado con la misma clave; no desinstales la aplicación." }
+        val compatible = if (android.os.Build.VERSION.SDK_INT >= 28) {
+            val installed = current.signingInfo?.apkContentsSigners?.map { it.toCharsString() }?.toSet().orEmpty()
+            val downloaded = candidate.signingInfo?.apkContentsSigners?.map { it.toCharsString() }?.toSet().orEmpty()
+            val history = candidate.signingInfo?.signingCertificateHistory?.map { it.toCharsString() }.orEmpty()
+            UpdatePolicy.signersCompatible(installed, downloaded, history)
+        } else {
+            val installed = current.signatures?.map { it.toCharsString() }?.toSet().orEmpty()
+            val downloaded = candidate.signatures?.map { it.toCharsString() }?.toSet().orEmpty()
+            installed.isNotEmpty() && installed == downloaded
+        }
+        check(compatible) { "La firma no corresponde a esta instalación ni a una rotación autorizada. No desinstales la aplicación." }
     }
     private fun error(e: Exception): String = if (e is IllegalStateException) e.message ?: "No se pudo verificar la actualización."
         else "No se pudo conectar o descargar. Comprueba Internet e inténtalo de nuevo."

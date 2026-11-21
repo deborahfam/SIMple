@@ -182,8 +182,9 @@ Documentation and Pencil-only changes do not publish an APK; implement designs i
 You can also run the workflow manually from GitHub Actions on `main`.
 
 The workflow runs versioning tests, release-variant Android unit tests and lint, builds a non-debuggable release APK, signs it with
-the existing installation key, verifies the certificate and rejects debuggable APKs, then publishes a stable GitHub Release
-with `SIMple-N.apk` and `SHA256SUMS.txt`. Failed checks never publish an update.
+a production key and a verified rotation lineage, rejects debuggable APKs, and publishes only when
+`ANDROID_PUBLISH_ENABLED=true`. Android 8 retains the original signature for compatibility. A stable GitHub Release contains
+`SIMple-N.apk` and `SHA256SUMS.txt`. Failed checks never publish an update.
 Android versionCode and the patch version increase automatically from existing releases;
 a higher base version in `app/build.gradle.kts` can start a new minor/major version.
 Generated versions are injected through Gradle properties without creating a commit loop.
@@ -193,9 +194,10 @@ runs; stale builds skip publication so the latest source is published. Rerunning
 commit does not create another release. Failed draft uploads can be resumed with **Re-run jobs**.
 The release body records the exact source commit and reserved Android version code.
 
-Repository Actions secrets: `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`,
-`ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`. The public certificate fingerprint is stored in
-`ANDROID_SIGNING_CERT_SHA256` (Actions variable). The signing key is restored only after tests,
+Legacy Actions secrets: `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`,
+`ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`. Production secrets use the corresponding
+`ANDROID_PRODUCTION_` prefix, plus `ANDROID_SIGNING_LINEAGE_BASE64`. Public certificate
+fingerprints are `ANDROID_SIGNING_CERT_SHA256` and `ANDROID_PRODUCTION_CERT_SHA256` (Actions variables). The signing key is restored only after tests,
 kept outside the checkout and Gradle cache, and removed after signing. Never commit this key.
 Only trusted maintainers should be allowed to push workflows to `main`.
 
@@ -213,11 +215,11 @@ Use the same signing key as the installed app. Local default versions remain the
 version; official automatic release versions are recorded in GitHub Releases.
 
 Production releases must use a protected, stable signing key. The workflow now builds the
-release variant, while retaining the configured signing certificate for update compatibility.
+release variant with a verified rotation lineage; Android 8 retains the legacy certificate.
 Never commit a signing key. Compatibility depends on the signing certificate, not the build
-variant: debug and release builds signed with different keys cannot update each other. Do not uninstall to bypass a signature
-mismatch: doing so removes local history and its encryption key. Signing-key rotation is not
-supported by this updater's conservative certificate equality check.
+variant: a different key needs a verified rotation lineage; an unrelated key cannot update the app. Do not uninstall to bypass a signature
+mismatch: doing so removes local history and its encryption key. The updater supports verified forward signing-key rotation on Android 9+ and keeps exact
+certificate matching on Android 8.
 
 A private repository or one without a public stable release returns a helpful unavailable message.
 The repository source itself is not installable: it must first be built into a signed APK. The
@@ -401,10 +403,13 @@ project is not affiliated with ETECSA, Cubacel or any bank.
 
 Both variants use `com.simple.mobile`; switching between them requires compatible signing.
 Release builds are not debuggable, cleartext HTTP is blocked and backups are disabled.
-The publishing workflow tests both variants and rejects debug signing certificates.
+The publishing workflow tests both variants, verifies key rotation and requires the production
+certificate on Android 9+. Android 8 keeps the legacy signature for update compatibility.
+`ANDROID_PUBLISH_ENABLED=false` currently gates APK publication pending device acceptance.
 Run `python3 scripts/verify_distribution.py` after building to verify the merged manifests.
 
-The publishable privacy page is [docs/privacy.html](docs/privacy.html); publish it at a stable,
-public HTTPS URL and enter that URL in Play Console before submission. Its offline source is
+The publishable privacy page is [docs/privacy.html](docs/privacy.html); published at
+[the public privacy URL](https://deborahfam.github.io/SIMple/privacy.html). Enter that URL in Play
+Console before submission. Its offline source is
 `app/src/main/assets/legal/privacy.txt`. Keep the page and bundled text synchronized.
 See [publication steps and remaining approvals](docs/PUBLISHING.md).

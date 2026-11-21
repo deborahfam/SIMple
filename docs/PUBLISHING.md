@@ -11,39 +11,53 @@
 - Offline creator/copyright, privacy policy and license notices, including a dependency inventory.
 - Future local commits use the creator's existing GitHub noreply identity.
 
-## Signing decision required before publication
+## Production signing and publication gate
 
-The current public release `v0.6.13` / `SIMple-22.apk` has a certificate subject
-`C=US, O=Android, CN=Android Debug`. It has no personal name or email in its subject,
-but it is a development signing identity. The workflow now refuses it.
+The current public APK `SIMple-22.apk` uses the old development signing identity. A private
+production key with subject `CN=SIMple, O=deborahfam` and a signed rotation lineage are now prepared.
+The key has no personal name or email. The CI signer uses the legacy key only for Android 8 / API
+26–27; Android 9+ / API 28+ uses the production key. Keeping the legacy signature on Android 8 is
+necessary for compatible updates there. The old key must remain protected while those devices are
+supported. It has not been exposed by this cleanup, and its local file is restricted to its owner.
 
-Do not silently replace the key or tell users to uninstall: uninstalling deletes their encrypted
-local history and keys. Choose between a fresh production installation with an explicit data-loss
-migration notice and a signing-key rotation plan verified across supported Android versions.
-The updater currently compares signing certificates for equality and does not implement rotation.
-A fresh production key should use a non-personal subject such as `CN=SIMple, O=deborahfam`.
-Store its credentials only in a password manager and Actions secrets; keep an encrypted offline
-backup. Do not reuse the developer debug keystore. No production key has been generated or
-installed in Actions by this review.
+`scripts/sign_release.py` rejects debuggable input and checks the exact expected certificate for
+API 26, 27, 28, 32, 33 and 36. The new updater permits matching current signers or forward rotation;
+it rejects returning to an older key or moving to an unrelated branch of the signing history.
+The published version's existing updater also accepted the rotated APK in the migration test.
 
-The production APK must pass `apksigner verify`, match the configured public certificate digest,
-and install/update on a real test device. The Play AAB also requires upload signing and Play App
-Signing configuration. The local `bundlePlayRelease` output is unsigned until that is configured.
+The optimized version-23 candidate was installed over public version 22 without uninstalling on
+Android API 36. The app kept its UID, preferences, original encryption key, encrypted readings,
+line profiles and recipients. Legacy saved PINs were deliberately removed and require re-entry.
+See [reproducible migration probes](../tests/migration/README.md).
+
+Production key material is in the ignored, owner-restricted `.local/signing/` directory. Back up
+that directory securely, and store its password in a password manager; never commit or publish it.
+Actions receives encrypted secrets for the production keystore/password/alias and rotation proof.
+The old signing secrets remain for Android 8 compatibility. Public expected fingerprints are
+`ANDROID_SIGNING_CERT_SHA256` (legacy) and `ANDROID_PRODUCTION_CERT_SHA256` (production).
+
+`ANDROID_PUBLISH_ENABLED=false` pauses APK publication while allowing builds and signature
+verification. Set it to `true` only after device acceptance and then run the release workflow.
+No new public APK has been released by this work. Play App Signing/upload-key configuration and
+Play Console declarations still need to be completed for the Play AAB; do not assume a new Play
+signing identity can update the direct edition without a compatible signing lineage.
 
 ## Public Git history cleanup
 
-The repository is already public. Personal-email metadata occurs in historical commits.
-A private, ignored local mirror is prepared for review; the original repository is unchanged.
-Replacing public branches and tags requires an explicit coordinated history rewrite, with
-force-with-lease checks against a fresh remote snapshot, release/tag verification, and instructions
-for collaborators to reclone. GitHub caches, forks and existing clones may retain old metadata;
-a history rewrite cannot guarantee removal of copies that others already obtained. Do not push
-`refs/original`, local review refs, or a mirror containing backup refs.
+The approved rewrite was applied atomically to `main` and 17 release tags after checking every
+remote reference with force-with-lease. Historical source trees are unchanged. Commit/tag email
+metadata uses GitHub noreply identities. The local checkout now follows the rewritten history.
+Collaborators should reclone; merging or force-pushing the old history would restore the old email.
+Release-note source references are updated to the equivalent sanitized commits.
+
+GitHub caches, forks, old release metadata and existing clones may retain old references;
+rewriting history cannot erase copies already obtained by others. The ignored local mirrors are
+private rollback copies and must never be pushed. No backup refs were included in the public push.
 
 ## Store setup and device acceptance
 
-1. Publish `docs/privacy.html` at a public, stable HTTPS URL and add it to Play Console. The policy
-   names SIMple and its creator, explains permissions, local storage, deletion and external services.
+1. Add the published [privacy policy](https://deborahfam.github.io/SIMple/privacy.html) to Play
+   Console. HTTPS is enforced; the served page was verified against the reviewed HTML.
 2. Complete Play Console Data safety, content rating, target audience and store listing using the
    **Play** variant's behavior. It has no app-server analytics or data upload; carrier/bank requests,
    user-directed browser links and any future SDK behavior must be assessed under Google's current
@@ -56,10 +70,10 @@ a history rewrite cannot guarantee removal of copies that others already obtaine
    perform a paid operation unless explicitly authorized for a controlled test.
 5. Submit the signed Play bundle for review. The direct APK is a separate GitHub release.
 
-## Verification scope (2026-11-20)
+## Verification scope (2026-11-21)
 
 The checked runtime inventory contains 58 distinct Maven coordinates. OSV's batch lookup found no
-known vulnerabilities for those versions on this date. That does not establish that the app or
+known vulnerabilities for those versions on 2026-11-20. That does not establish that the app or
 native/transitive components have no vulnerabilities. Repeat the check when dependencies change.
 Source/history pattern scans, encryption tests and emulator tests do not replace real-device
 acceptance or a complete independent security assessment. No release was published during this work.

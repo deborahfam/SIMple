@@ -61,7 +61,7 @@ jobs:
       - name: Verify distribution privacy boundaries
         if: steps.version.outputs.published != 'true'
         run: python3 scripts/verify_distribution.py
-      - name: Sign compatible update and verify certificate
+      - name: Sign compatible production update and verify rotation
         if: steps.version.outputs.published != 'true'
         env:
           KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
@@ -69,33 +69,23 @@ jobs:
           KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
           EXPECTED_CERT: ${{ vars.ANDROID_SIGNING_CERT_SHA256 }}
+          PRODUCTION_KEYSTORE_BASE64: ${{ secrets.ANDROID_PRODUCTION_KEYSTORE_BASE64 }}
+          PRODUCTION_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_PRODUCTION_KEYSTORE_PASSWORD }}
+          PRODUCTION_KEY_ALIAS: ${{ secrets.ANDROID_PRODUCTION_KEY_ALIAS }}
+          PRODUCTION_KEY_PASSWORD: ${{ secrets.ANDROID_PRODUCTION_KEY_PASSWORD }}
+          SIGNING_LINEAGE_BASE64: ${{ secrets.ANDROID_SIGNING_LINEAGE_BASE64 }}
+          EXPECTED_PRODUCTION_CERT: ${{ vars.ANDROID_PRODUCTION_CERT_SHA256 }}
           VERSION_CODE: ${{ steps.version.outputs.code }}
         run: |
           set -euo pipefail
-          test -n "$KEYSTORE_BASE64"
-          test -n "$EXPECTED_CERT"
-          umask 077
-          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/update.keystore"
-          mkdir -p "$RUNNER_TEMP/update"
-          APK="$RUNNER_TEMP/update/SIMple-$VERSION_CODE.apk"
-          "$ANDROID_HOME/build-tools/36.0.0/apksigner" sign --ks "$RUNNER_TEMP/update.keystore" --ks-key-alias "$KEY_ALIAS" --ks-pass env:KEYSTORE_PASSWORD --key-pass env:KEY_PASSWORD --out "$APK" app/build/outputs/apk/direct/release/app-direct-release-unsigned.apk
-          CERT_INFO=$("$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs "$APK")
-          if printf '%s\n' "$CERT_INFO" | grep -qi 'CN=Android Debug'; then
-            echo 'Refusing a debug signing certificate. Configure a production signing key.' >&2
-            exit 1
-          fi
-          ACTUAL_CERT=$(printf '%s\n' "$CERT_INFO" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')
-          test "$ACTUAL_CERT" = "$EXPECTED_CERT"
-          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | sed -n '1p' | grep -F "package: name='com.simple.mobile' versionCode='$VERSION_CODE'"
-          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" > "$RUNNER_TEMP/apk-badging.txt"
-          if grep -q "application-debuggable" "$RUNNER_TEMP/apk-badging.txt"; then
-            echo "Refusing to publish a debuggable APK" >&2
-            exit 1
-          fi
+          python3 scripts/sign_release.py --apk app/build/outputs/apk/direct/release/app-direct-release-unsigned.apk --out "$RUNNER_TEMP/update/SIMple-$VERSION_CODE.apk" --version-code "$VERSION_CODE"
           cd "$RUNNER_TEMP/update"
           sha256sum "SIMple-$VERSION_CODE.apk" > SHA256SUMS.txt
+      - name: Publication gate
+        if: steps.version.outputs.published != 'true' && vars.ANDROID_PUBLISH_ENABLED != 'true'
+        run: echo 'Build and production signatures verified. Publication is paused pending device acceptance; ANDROID_PUBLISH_ENABLED must be true to release.' >> "$GITHUB_STEP_SUMMARY"
       - name: Publish stable GitHub release
-        if: steps.version.outputs.published != 'true'
+        if: steps.version.outputs.published != 'true' && vars.ANDROID_PUBLISH_ENABLED == 'true'
         env:
           VERSION_CODE: ${{ steps.version.outputs.code }}
           VERSION_NAME: ${{ steps.version.outputs.name }}
@@ -124,6 +114,3 @@ jobs:
           gh release upload "$RELEASE_TAG" "$RUNNER_TEMP/update/SIMple-$VERSION_CODE.apk" "$RUNNER_TEMP/update/SHA256SUMS.txt" --clobber
           gh release edit "$RELEASE_TAG" --draft=false --latest
           echo "Publicado: https://github.com/$GH_REPO/releases/tag/$RELEASE_TAG" >> "$GITHUB_STEP_SUMMARY"
-      - name: Remove signing material
-        if: always()
-        run: rm -f "$RUNNER_TEMP/update.keystore"
