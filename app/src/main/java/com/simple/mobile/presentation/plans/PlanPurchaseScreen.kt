@@ -26,9 +26,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
-import androidx.compose.ui.window.SecureFlagPolicy
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.simple.mobile.domain.plans.*
 import com.simple.mobile.presentation.DashboardState
@@ -36,7 +33,7 @@ import com.simple.mobile.presentation.DashboardViewModel
 import com.simple.mobile.presentation.FlowProgress
 import com.simple.mobile.presentation.DetailDisclosure
 
-@Composable fun PlanPurchaseScreen(state: DashboardState, model: DashboardViewModel, onClose: () -> Unit,
+@Composable internal fun PlanPurchaseContent(state: DashboardState, model: DashboardViewModel, onClose: () -> Unit,
     onPermissions: () -> Unit, onRefresh: () -> Unit, onCategories: (() -> Unit)? = null) {
     val purchase by model.purchases.state.collectAsStateWithLifecycle()
     val initialSubscription by rememberSaveable { mutableIntStateOf(state.selected) }
@@ -54,129 +51,126 @@ import com.simple.mobile.presentation.DetailDisclosure
     val scroll = rememberScrollState()
     val step = if (attempt != null) 2 else if (reviewing) 1 else 0
     LaunchedEffect(step) { scroll.scrollTo(0) }
-    Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false,
-        decorFitsSystemWindows = false, securePolicy = if (attempt != null) SecureFlagPolicy.SecureOn else SecureFlagPolicy.Inherit)) {
-        val window = (LocalView.current.parent as? DialogWindowProvider)?.window
-        val dark = isSystemInDarkTheme()
-        SideEffect {
-            window?.let { WindowCompat.getInsetsController(it, it.decorView).apply {
-                isAppearanceLightStatusBars = !dark
-                isAppearanceLightNavigationBars = !dark
-            } }
-        }
-        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-            Scaffold(Modifier.fillMaxSize().safeDrawingPadding(), contentWindowInsets = WindowInsets(0, 0, 0, 0), topBar = {
-                Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    if (reviewing && attempt == null) {
-                        IconButton(onClick = { reviewing = false }) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Volver a elegir plan") }
-                    } else if (attempt == null && onCategories != null) {
-                        IconButton(onClick = onCategories) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Volver a categorías") }
-                    }
-                    Text(if (attempt != null) "Tu solicitud" else if (reviewing) "Revisar compra" else "Comprar planes", modifier = Modifier.weight(1f).semantics { heading() }, style = MaterialTheme.typography.titleLarge)
-                    IconButton(onClick = onClose) { Icon(Icons.Outlined.Close, "Cerrar planes") }
+    val window = (LocalView.current.parent as? DialogWindowProvider)?.window
+    val dark = isSystemInDarkTheme()
+    SideEffect {
+        window?.let { WindowCompat.getInsetsController(it, it.decorView).apply {
+            isAppearanceLightStatusBars = !dark
+            isAppearanceLightNavigationBars = !dark
+        } }
+    }
+    Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+        Scaffold(Modifier.fillMaxSize().safeDrawingPadding(), contentWindowInsets = WindowInsets(0, 0, 0, 0), topBar = {
+            Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (reviewing && attempt == null) {
+                    IconButton(onClick = { reviewing = false }) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Volver a elegir plan") }
+                } else if (attempt == null && onCategories != null) {
+                    IconButton(onClick = onCategories) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Volver a categorías") }
                 }
-            }, bottomBar = {
-                Surface(shadowElevation = 8.dp, color = MaterialTheme.colorScheme.surface) {
-                    Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        if (attempt == null) {
-                            Column(Modifier.widthIn(max = 560.dp).fillMaxWidth()) {
-                                Text(if (plan == null) "Elige un plan para continuar" else if (reviewing) "Total a pagar · ${plan.priceCup} CUP" else "${plan.title} · ${plan.priceCup} CUP",
-                                    style = MaterialTheme.typography.titleSmall)
-                                Text(if (reviewing) "Con el saldo principal de tu línea" else "Podrás revisar los detalles antes de comprar",
-                                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
+                Text(if (attempt != null) "Tu solicitud" else if (reviewing) "Revisar compra" else "Comprar planes", modifier = Modifier.weight(1f).semantics { heading() }, style = MaterialTheme.typography.titleLarge)
+                IconButton(onClick = onClose) { Icon(Icons.Outlined.Close, "Cerrar planes") }
+            }
+        }, bottomBar = {
+            Surface(shadowElevation = 8.dp, color = MaterialTheme.colorScheme.surface) {
+                Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    if (attempt == null) {
+                        Column(Modifier.widthIn(max = 560.dp).fillMaxWidth()) {
+                            Text(if (plan == null) "Elige un plan para continuar" else if (reviewing) "Total a pagar · ${plan.priceCup} CUP" else "${plan.title} · ${plan.priceCup} CUP",
+                                style = MaterialTheme.typography.titleSmall)
+                            Text(if (reviewing) "Con el saldo principal de tu línea" else "Podrás revisar los detalles antes de comprar",
+                                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
-                        val button = Modifier.widthIn(max = 560.dp).fillMaxWidth().heightIn(min = 52.dp)
-                        when {
-                            attempt != null -> OutlinedButton(onClick = onClose, modifier = button) { Text("Volver a mi línea") }
-                            !reviewing -> Button(onClick = { reviewing = true }, enabled = plan != null && purchase.ready && !purchase.busy,
-                                modifier = button) { Text("Continuar"); Spacer(Modifier.width(8.dp)); Icon(Icons.AutoMirrored.Outlined.ArrowForward, null, modifier = Modifier.size(18.dp)) }
-                            !permitted -> Button(onClick = onPermissions, modifier = button) { Text("Permitir consultas y compras") }
-                            else -> Button(onClick = { plan?.let { model.purchasePlan(it.id, subscription) } },
-                                enabled = available && plan != null && purchase.ready && !purchase.busy, modifier = button) {
-                                Text("Confirmar compra")
-                            }
+                    }
+                    val button = Modifier.widthIn(max = 560.dp).fillMaxWidth().heightIn(min = 52.dp)
+                    when {
+                        attempt != null -> OutlinedButton(onClick = onClose, modifier = button) { Text("Volver a mi línea") }
+                        !reviewing -> Button(onClick = { reviewing = true }, enabled = plan != null && purchase.ready && !purchase.busy,
+                            modifier = button) { Text("Continuar"); Spacer(Modifier.width(8.dp)); Icon(Icons.AutoMirrored.Outlined.ArrowForward, null, modifier = Modifier.size(18.dp)) }
+                        !permitted -> Button(onClick = onPermissions, modifier = button) { Text("Permitir consultas y compras") }
+                        else -> Button(onClick = { plan?.let { model.purchasePlan(it.id, subscription) } },
+                            enabled = available && plan != null && purchase.ready && !purchase.busy, modifier = button) {
+                            Text("Confirmar compra")
                         }
                     }
                 }
-            }) { padding ->
-                Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.TopCenter) {
-                    Column(Modifier.widthIn(max = 600.dp).fillMaxWidth().verticalScroll(scroll).padding(horizontal = 20.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                        FlowProgress(step, listOf("Elige tu plan", "Revisa tu compra", "Tu resultado"))
+            }
+        }) { padding ->
+            Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.TopCenter) {
+                Column(Modifier.widthIn(max = 600.dp).fillMaxWidth().verticalScroll(scroll).padding(horizontal = 20.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    FlowProgress(step, listOf("Elige tu plan", "Revisa tu compra", "Tu resultado"))
+                    Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.medium) {
+                        Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Icon(Icons.Outlined.SimCard, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(line?.label ?: "Línea $subscription", style = MaterialTheme.typography.titleSmall)
+                                Text("Pago con saldo principal", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    }
+                    purchase.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                    if (!purchase.ready && purchase.error == null) LinearProgressIndicator(Modifier.fillMaxWidth())
+                    if (!eligible && attempt == null) Text("Selecciona una SIM Cubacel activa en Inicio para comprar.", color = MaterialTheme.colorScheme.error)
+                    if (state.busy && attempt == null) Text("Espera a que termine la consulta en curso.")
+                    if (!state.storageReady && attempt == null) Text("Reintenta el almacenamiento desde Ajustes antes de comprar.", color = MaterialTheme.colorScheme.error)
+                    if (attempt != null) {
+                        if (plan != null) PlanSummary(plan)
+                        val title = when (attempt.phase) {
+                            PurchasePhase.SENDING -> "Enviando solicitud a Cubacel"
+                            PurchasePhase.RESPONSE -> "Respuesta de Cubacel"
+                            PurchasePhase.UNKNOWN -> "Compra sin confirmar"
+                            PurchasePhase.NOT_SENT -> "La solicitud no se envió"
+                        }
+                        Text(title, style = MaterialTheme.typography.titleLarge, modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
+                        if (purchase.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+                        Text(when (attempt.phase) {
+                            PurchasePhase.SENDING -> "Se envía una sola solicitud. Cerrar esta pantalla no cancela una operación que ya recibió el operador."
+                            PurchasePhase.RESPONSE -> "Lee la respuesta antes de iniciar otra compra. Recibir una respuesta no garantiza que el plan se haya activado."
+                            PurchasePhase.UNKNOWN -> "No hay confirmación del resultado. El operador podría haber procesado la compra. Revisa tus recursos y SMS antes de volver a comprar."
+                            PurchasePhase.NOT_SENT -> "Comprueba los permisos, la SIM y si hay otra sesión USSD abierta. Para volver a intentarlo, inicia una nueva revisión."
+                        })
+                        purchase.response?.let { reply ->
+                            Surface(color = MaterialTheme.colorScheme.surfaceVariant, shape = MaterialTheme.shapes.medium) {
+                                Text(reply, modifier = Modifier.fillMaxWidth().padding(16.dp))
+                            }
+                        }
+                        if (!purchase.busy) {
+                            OutlinedButton(onClick = { model.select(subscription); onClose(); onRefresh() }, enabled = eligible && !state.busy && !state.managingLine && state.storageReady,
+                                modifier = Modifier.fillMaxWidth()) { Text("Consultar saldo y recursos") }
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Checkbox(checked = acknowledged, onCheckedChange = { acknowledged = it })
+                                Text("He revisado el resultado antes de iniciar otra compra.", style = MaterialTheme.typography.bodySmall)
+                            }
+                            TextButton(onClick = { model.purchases.acknowledge(); reviewing = false; selectedId = null }, enabled = acknowledged) { Text("Elegir otro plan") }
+                        }
+                    } else if (!reviewing) {
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text("Conéctate a tu manera", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                            Text("Elige datos o un combinado con minutos y SMS.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Column(Modifier.selectableGroup(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            PlanCatalog.plans.forEach { offer ->
+                                PlanOption(offer, selected = offer.id == selectedId, onSelect = { selectedId = offer.id })
+                            }
+                        }
                         Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.medium) {
-                            Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                Icon(Icons.Outlined.SimCard, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
-                                Column(Modifier.weight(1f)) {
-                                    Text(line?.label ?: "Línea $subscription", style = MaterialTheme.typography.titleSmall)
-                                    Text("Pago con saldo principal", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Row(Modifier.fillMaxWidth().padding(14.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Icon(Icons.Outlined.Info, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Text("Incluido en todos los planes", style = MaterialTheme.typography.labelLarge)
+                                    Text("300 MB de navegación nacional y 35 días de vigencia desde el primer uso.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                             }
                         }
-                        purchase.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-                        if (!purchase.ready && purchase.error == null) LinearProgressIndicator(Modifier.fillMaxWidth())
-                        if (!eligible && attempt == null) Text("Selecciona una SIM Cubacel activa en Inicio para comprar.", color = MaterialTheme.colorScheme.error)
-                        if (state.busy && attempt == null) Text("Espera a que termine la consulta en curso.")
-                        if (!state.storageReady && attempt == null) Text("Reintenta el almacenamiento desde Ajustes antes de comprar.", color = MaterialTheme.colorScheme.error)
-                        if (attempt != null) {
-                            if (plan != null) PlanSummary(plan)
-                            val title = when (attempt.phase) {
-                                PurchasePhase.SENDING -> "Enviando solicitud a Cubacel"
-                                PurchasePhase.RESPONSE -> "Respuesta de Cubacel"
-                                PurchasePhase.UNKNOWN -> "Compra sin confirmar"
-                                PurchasePhase.NOT_SENT -> "La solicitud no se envió"
-                            }
-                            Text(title, style = MaterialTheme.typography.titleLarge, modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
-                            if (purchase.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
-                            Text(when (attempt.phase) {
-                                PurchasePhase.SENDING -> "Se envía una sola solicitud. Cerrar esta pantalla no cancela una operación que ya recibió el operador."
-                                PurchasePhase.RESPONSE -> "Lee la respuesta antes de iniciar otra compra. Recibir una respuesta no garantiza que el plan se haya activado."
-                                PurchasePhase.UNKNOWN -> "No hay confirmación del resultado. El operador podría haber procesado la compra. Revisa tus recursos y SMS antes de volver a comprar."
-                                PurchasePhase.NOT_SENT -> "Comprueba los permisos, la SIM y si hay otra sesión USSD abierta. Para volver a intentarlo, inicia una nueva revisión."
-                            })
-                            purchase.response?.let { reply ->
-                                Surface(color = MaterialTheme.colorScheme.surfaceVariant, shape = MaterialTheme.shapes.medium) {
-                                    Text(reply, modifier = Modifier.fillMaxWidth().padding(16.dp))
-                                }
-                            }
-                            if (!purchase.busy) {
-                                OutlinedButton(onClick = { model.select(subscription); onClose(); onRefresh() }, enabled = eligible && !state.busy && !state.managingLine && state.storageReady,
-                                    modifier = Modifier.fillMaxWidth()) { Text("Consultar saldo y recursos") }
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Checkbox(checked = acknowledged, onCheckedChange = { acknowledged = it })
-                                    Text("He revisado el resultado antes de iniciar otra compra.", style = MaterialTheme.typography.bodySmall)
-                                }
-                                TextButton(onClick = { model.purchases.acknowledge(); reviewing = false; selectedId = null }, enabled = acknowledged) { Text("Elegir otro plan") }
-                            }
-                        } else if (!reviewing) {
-                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                Text("Conéctate a tu manera", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                                Text("Elige datos o un combinado con minutos y SMS.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                            Column(Modifier.selectableGroup(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                PlanCatalog.plans.forEach { offer ->
-                                    PlanOption(offer, selected = offer.id == selectedId, onSelect = { selectedId = offer.id })
-                                }
-                            }
-                            Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.medium) {
-                                Row(Modifier.fillMaxWidth().padding(14.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                    Icon(Icons.Outlined.Info, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
-                                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                        Text("Incluido en todos los planes", style = MaterialTheme.typography.labelLarge)
-                                        Text("300 MB de navegación nacional y 35 días de vigencia desde el primer uso.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                    }
-                                }
-                            }
-                            Text("Ofertas de ETECSA · revisadas el ${PlanCatalog.VERIFIED_ON}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        } else if (plan != null) {
-                            PlanSummary(plan)
-                            Text("Se descontarán ${plan.priceCup} CUP del saldo de ${line?.label ?: "la SIM seleccionada"} al completar la compra.", style = MaterialTheme.typography.bodyLarge)
-                            Text("La compra directa está pendiente de validación con Cubacel. Si no llega confirmación, revisa tus recursos antes de volver a comprar.", style = MaterialTheme.typography.bodySmall)
-                            DetailDisclosure("Código y condiciones") {
-                                Text("Código a enviar: ${plan.code}")
-                                Text("Una solicitud, sin reintentos automáticos. Los precios son los publicados, no una cotización en tiempo real. La vigencia empieza con el primer uso, no al seleccionar el plan.")
-                            }
-                            TextButton(onClick = { reviewing = false }) { Text("Cambiar plan") }
+                        Text("Ofertas de ETECSA · revisadas el ${PlanCatalog.VERIFIED_ON}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    } else if (plan != null) {
+                        PlanSummary(plan)
+                        Text("Se descontarán ${plan.priceCup} CUP del saldo de ${line?.label ?: "la SIM seleccionada"} al completar la compra.", style = MaterialTheme.typography.bodyLarge)
+                        Text("La compra directa está pendiente de validación con Cubacel. Si no llega confirmación, revisa tus recursos antes de volver a comprar.", style = MaterialTheme.typography.bodySmall)
+                        DetailDisclosure("Código y condiciones") {
+                            Text("Código a enviar: ${plan.code}")
+                            Text("Una solicitud, sin reintentos automáticos. Los precios son los publicados, no una cotización en tiempo real. La vigencia empieza con el primer uso, no al seleccionar el plan.")
                         }
+                        TextButton(onClick = { reviewing = false }) { Text("Cambiar plan") }
                     }
                 }
             }
