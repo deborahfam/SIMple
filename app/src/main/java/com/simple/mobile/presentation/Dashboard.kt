@@ -465,12 +465,25 @@ private val Navy = Color(0xFF35234F)
                         }
                         item { Statistics(state, model, now, onReminders, onNotificationSettings, onRefreshAll) }
                     } else {
+                        item { SettingsSectionHeading("Líneas") }
                         item {
                             WhiteCard {
-                                Text("Conexión y permisos", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                                Text("Tus líneas", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                                state.displayLines.forEach { line ->
+                                    OutlinedButton(onClick = {
+                                        rename = line; nickname = line.nickname
+                                        linePhone = state.linePhones[line.subscription].orEmpty()
+                                    }, enabled = state.storageReady && !state.managingLine,
+                                        modifier = Modifier.fillMaxWidth()) { Text("Editar · ${line.label}") }
+                                }
                                 SettingsRow("Destinatarios y transferencias", Icons.Outlined.PeopleOutline) { transfer = true }
                                 SettingsRow("Actualizar tarjetas SIM", Icons.Outlined.Refresh) { model.refreshLines() }
                                 SettingsRow("Gestionar SIM en Android", Icons.Outlined.SimCard, onSettings)
+                            }
+                        }
+                        item { SettingsSectionHeading("Permisos y SMS") }
+                        item {
+                            WhiteCard {
                                 SettingsRow("Permisos de la aplicación", Icons.Outlined.Security, onAppSettings)
                             }
                         }
@@ -492,17 +505,28 @@ private val Navy = Color(0xFF35234F)
                                 SettingsRow("Notificaciones en Android", Icons.Outlined.Notifications, onNotificationSettings)
                             }
                         }
+                        item { SettingsSectionHeading("Privacidad y almacenamiento") }
                         item {
                             WhiteCard {
                                 Text("Privacidad, desde el inicio", fontWeight = FontWeight.Bold, fontSize = 18.sp)
                                 Text("Datos cifrados en este dispositivo. Sin cuentas ni telemetría.", color = Muted, fontSize = 13.sp)
                                 DetailDisclosure("Cómo protegemos tus datos") {
-                                    Text("Las respuestas USSD se procesan en este teléfono. Solo guardamos los valores reconocidos, cifrados con una clave del dispositivo. Sin cuentas, sin anuncios y sin telemetría.", color = Muted, fontSize = 13.sp)
+                                    Text("Las respuestas USSD se procesan en este teléfono. Guardamos los valores reconocidos y la respuesta de la última compra de datos, cifrados con una clave del dispositivo. Sin cuentas, sin anuncios y sin telemetría.", color = Muted, fontSize = 13.sp)
                                 }
+                                PrivacyInformation()
+                            }
+                        }
+                        item {
+                            WhiteCard {
+                                Text("Gestión de datos", fontWeight = FontWeight.Bold, fontSize = 18.sp)
                                 SettingsRow("Reintentar almacenamiento", Icons.Outlined.Refresh) { model.retryStorage() }
                                 SettingsRow("Eliminar datos de todas las líneas", Icons.Outlined.DeleteOutline) { deleteSubscription = null; deleteLabel = "todas las líneas"; delete = true }
                                 Text("La SIM y el historial se asocian al registro local de Android. Si sustituyes una tarjeta, elimina su historial para evitar mezclar lecturas.", fontSize = 11.sp, color = Muted)
                             }
+                        }
+                        item { SettingsSectionHeading("Actualizaciones") }
+                        if (!com.simple.mobile.BuildConfig.DIRECT_DISTRIBUTION) item {
+                            WhiteCard { Text("Las actualizaciones de esta edición se gestionan desde Google Play.") }
                         }
                         if (com.simple.mobile.BuildConfig.DIRECT_DISTRIBUTION) item {
                             WhiteCard {
@@ -532,9 +556,9 @@ private val Navy = Color(0xFF35234F)
                                 if (update.ready) Button(onClick = onInstallUpdate, enabled = !update.busy) { Text("Instalar actualización") }
                             }
                         }
+                        item { SettingsSectionHeading("Acerca de") }
                         item { AboutCard() }
                         item {
-                            Text("SIMple ${com.simple.mobile.BuildConfig.VERSION_NAME}", fontSize = 12.sp, color = Muted)
                             Text("Las consultas necesitan una SIM Cubacel y cobertura. Consulta los SMS de confirmación en tu aplicación de mensajes.", fontSize = 12.sp, color = Muted)
                         }
                     }
@@ -825,4 +849,9 @@ private fun expirationLabel(at: Long, now: Long) =
         }
         TextButton(onClick = history) { Text("Ver historial completo"); Spacer(Modifier.width(6.dp)); Icon(Icons.Outlined.ArrowForward, null, modifier = Modifier.size(18.dp)) }
     }
+}
+
+@Composable private fun SettingsSectionHeading(title: String) {
+    Text(title, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.padding(top = 12.dp).semantics { heading() })
 }

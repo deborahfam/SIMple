@@ -33,6 +33,7 @@ import com.simple.mobile.SimpleApplication
 import com.simple.mobile.domain.recharge.*
 import com.simple.mobile.presentation.DashboardState
 import com.simple.mobile.presentation.FlowProgress
+import com.simple.mobile.presentation.PurchaseReviewCard
 
 @Composable fun RechargeScreen(dashboard: DashboardState, onClose: () -> Unit, onPermissions: () -> Unit,
     bankNotices: @Composable (Int) -> Unit) {
@@ -153,16 +154,10 @@ import com.simple.mobile.presentation.FlowProgress
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), singleLine = true)
                             else TextButton(onClick = { customAmount = true; cup = "" }) { Text("Elegir otro importe") }
                         } else {
-                            Surface(color = MaterialTheme.colorScheme.primaryContainer, shape = MaterialTheme.shapes.extraLarge) {
-                                Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                                    Text("TU RECARGA", style = MaterialTheme.typography.labelLarge)
-                                    Text("${attempt?.cup ?: MetropolitanoProtocol.amount(cup)} CUP", style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Bold)
-                                    Text("Para +53 ${attempt?.phone ?: phone}", style = MaterialTheme.typography.titleMedium)
-                                    HorizontalDivider(color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.2f))
-                                    Text("Metropolitano · cuenta CUP asociada")
-                                    Text("Desde $line", style = MaterialTheme.typography.bodySmall)
-                                }
-                            }
+                            PurchaseReviewCard(title = "Tu recarga", line = line,
+                                destination = "+53 ${attempt?.phone ?: phone}",
+                                amount = "${attempt?.cup ?: MetropolitanoProtocol.amount(cup)} CUP",
+                                paymentMethod = "Cuenta CUP de Metropolitano")
                             if (attempt == null) {
                                 Text("Primero, autentícate", style = MaterialTheme.typography.titleLarge)
                                 Text("Autentícate para confirmar el pago.", style = MaterialTheme.typography.bodySmall)

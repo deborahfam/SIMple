@@ -34,6 +34,7 @@ import com.simple.mobile.domain.recharge.MetropolitanoProtocol
 import com.simple.mobile.presentation.DashboardState
 import com.simple.mobile.presentation.DashboardViewModel
 import com.simple.mobile.presentation.FlowProgress
+import com.simple.mobile.presentation.PurchaseReviewCard
 import com.simple.mobile.presentation.recharge.RechargeLineSelector
 
 @Composable fun PlanShopScreen(state: DashboardState, model: DashboardViewModel, onClose: () -> Unit,
@@ -165,15 +166,12 @@ import com.simple.mobile.presentation.recharge.RechargeLineSelector
                                     }
                                     Text("Pago desde tu cuenta bancaria.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 } else if (offer != null) {
-                                    Surface(color = MaterialTheme.colorScheme.primaryContainer, shape = MaterialTheme.shapes.extraLarge) {
-                                        Column(Modifier.fillMaxWidth().padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                                            Text("${offer.quantity} ${category.unit}", style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Bold)
-                                            Text(offer.priceLabel, style = MaterialTheme.typography.headlineSmall)
-                                            HorizontalDivider()
-                                            Text(state.displayLines.firstOrNull { it.subscription == destination }?.label ?: "Línea de destino")
-                                            Text("+53 $phone", style = MaterialTheme.typography.bodyMedium)
-                                        }
-                                    }
+                                    PurchaseReviewCard(
+                                        title = "${offer.quantity} ${category.unit}",
+                                        line = "SIM vinculada a Metropolitano · se elige en Teléfono",
+                                        destination = "${state.displayLines.firstOrNull { it.subscription == destination }?.label ?: "Línea de destino"} · +53 $phone",
+                                        amount = offer.priceLabel,
+                                        paymentMethod = "Cuenta CUP de Metropolitano")
                                     Text(if (opened) "Continúa en el menú del banco" else "Revisa tu plan", style = MaterialTheme.typography.titleLarge)
                                     Text("En Teléfono, usa la SIM vinculada a Metropolitano y marca. En el menú de ${category.title}, elige la opción ${offer.option}: ${offer.quantity} ${category.unit}.",
                                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

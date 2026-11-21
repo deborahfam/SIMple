@@ -33,6 +33,7 @@ import com.simple.mobile.domain.plans.*
 import com.simple.mobile.presentation.DashboardState
 import com.simple.mobile.presentation.DashboardViewModel
 import com.simple.mobile.presentation.FlowProgress
+import com.simple.mobile.presentation.PurchaseReviewCard
 import com.simple.mobile.presentation.DetailDisclosure
 
 @Composable internal fun PlanPurchaseContent(state: DashboardState, model: DashboardViewModel, onClose: () -> Unit,
@@ -131,7 +132,7 @@ import com.simple.mobile.presentation.DetailDisclosure
                     if (state.busy && attempt == null) Text("Espera a que termine la consulta en curso.")
                     if (!state.storageReady && attempt == null) Text("Reintenta el almacenamiento desde Ajustes antes de comprar.", color = MaterialTheme.colorScheme.error)
                     if (attempt != null) {
-                        if (plan != null) PlanSummary(plan)
+                        if (plan != null) PlanSummary(plan, line?.label ?: "SIM $subscription", state.linePhones[subscription])
                         val title = when (attempt.phase) {
                             PurchasePhase.SENDING -> "Enviando solicitud a Cubacel"
                             PurchasePhase.RESPONSE -> "Respuesta de Cubacel"
@@ -181,7 +182,7 @@ import com.simple.mobile.presentation.DetailDisclosure
                         }
                         Text("Ofertas de ETECSA · revisadas el ${PlanCatalog.VERIFIED_ON}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     } else if (plan != null) {
-                        PlanSummary(plan)
+                        PlanSummary(plan, line?.label ?: "SIM $subscription", state.linePhones[subscription])
                         Text("Se descontarán ${plan.priceCup} CUP del saldo de ${line?.label ?: "la SIM seleccionada"} al completar la compra.", style = MaterialTheme.typography.bodyLarge)
                         Text("La compra directa está pendiente de validación con Cubacel. Si no llega confirmación, revisa tus recursos antes de volver a comprar.", style = MaterialTheme.typography.bodySmall)
                         DetailDisclosure("Código y condiciones") {
@@ -236,17 +237,13 @@ import com.simple.mobile.presentation.DetailDisclosure
         fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
 }
 
-@Composable private fun PlanSummary(plan: MobilePlan) {
-    Surface(color = MaterialTheme.colorScheme.primaryContainer, shape = MaterialTheme.shapes.extraLarge) {
-        Column(Modifier.fillMaxWidth().padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text(if (plan.minutes == 0) "TU PLAN DE INTERNET" else "TU PLAN COMBINADO",
-                style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onPrimaryContainer)
-            Text(plan.data, style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Bold)
-            if (plan.minutes > 0) Text("${plan.minutes} minutos nacionales · ${plan.sms} SMS")
-            HorizontalDivider(color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.2f))
-            Text("+ 300 MB de navegación nacional", style = MaterialTheme.typography.bodyMedium)
-            Text("35 días desde el primer uso", style = MaterialTheme.typography.bodyMedium)
-            Text("${plan.priceCup} CUP", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-        }
+@Composable private fun PlanSummary(plan: MobilePlan, line: String, phone: String?) {
+    PurchaseReviewCard(title = if (plan.minutes == 0) "Tu plan de Internet" else "Tu plan combinado",
+        line = line, destination = phone?.takeIf { it.isNotBlank() }?.let { "$line · +53 $it" } ?: line,
+        amount = "${plan.priceCup} CUP", paymentMethod = "Saldo principal de la línea") {
+        Text(plan.data, style = MaterialTheme.typography.headlineSmall)
+        if (plan.minutes > 0) Text("${plan.minutes} minutos nacionales · ${plan.sms} SMS")
+        Text("+ 300 MB de navegación nacional", style = MaterialTheme.typography.bodyMedium)
+        Text("35 días desde el primer uso", style = MaterialTheme.typography.bodyMedium)
     }
 }
