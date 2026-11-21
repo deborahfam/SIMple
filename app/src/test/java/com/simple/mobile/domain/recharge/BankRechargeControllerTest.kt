@@ -80,4 +80,38 @@ class BankRechargeControllerTest {
         f.confirm(); assertEquals(1, f.sends)
         f.controller.acknowledge(); assertNotNull(f.controller.state.value.attempt)
     }
+    @Test fun visibleAuthenticationExpiresWithoutPressingConfirm() {
+        val f = Fixture(); f.start(); f.auth.complete("Respuesta")
+        f.now += 300000
+        f.controller.refreshAuthenticationExpiry()
+        assertEquals(BankPhase.AUTH_RESPONSE, f.controller.state.value.attempt?.phase)
+        f.now++
+        f.controller.refreshAuthenticationExpiry()
+        assertEquals(BankPhase.AUTH_REQUIRED, f.controller.state.value.attempt?.phase)
+        assertNotNull(f.controller.state.value.error)
+        assertEquals(7, f.controller.state.value.attempt?.subscription)
+        assertEquals(0, f.sends)
+        f.confirm()
+        assertEquals(0, f.sends)
+    }
+    @Test fun expiryRefreshDoesNotChangeAnAlreadySentRecharge() {
+        val f = Fixture(); f.start(); f.auth.complete("Respuesta"); f.confirm()
+        f.now += 300001
+        f.controller.refreshAuthenticationExpiry()
+        assertEquals(BankPhase.SENDING, f.controller.state.value.attempt?.phase)
+        assertTrue(f.controller.state.value.busy)
+        assertEquals(1, f.sends)
+        f.debit.complete("Recarga recibida")
+        f.controller.refreshAuthenticationExpiry()
+        assertEquals(BankPhase.RESPONSE, f.controller.state.value.attempt?.phase)
+        assertEquals("Recarga recibida", f.controller.state.value.response)
+    }
+    @Test fun backwardsClockRequiresNewAuthentication() {
+        val f = Fixture(); f.start(); f.auth.complete("Respuesta")
+        f.now--
+        f.controller.refreshAuthenticationExpiry()
+        assertEquals(BankPhase.AUTH_REQUIRED, f.controller.state.value.attempt?.phase)
+        assertEquals(0, f.sends)
+    }
+
 }

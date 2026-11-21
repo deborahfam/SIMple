@@ -54,13 +54,21 @@ class BankRechargeController(private val store: BankAttemptStore, private val wo
             } finally { pin.fill('\u0000') }
         }
     }
+    /** Refresh the visible authentication state without sending any bank request. */
+    @Synchronized fun refreshAuthenticationExpiry() {
+        val current = mutable.value
+        val attempt = current.attempt ?: return
+        if (current.busy || attempt.phase != BankPhase.AUTH_RESPONSE) return
+        if (clock() - attempt.at !in 0..300_000L) {
+            mutable.value = current.copy(attempt = attempt.copy(phase = BankPhase.AUTH_REQUIRED),
+                error = "La autenticación venció. Revisa la respuesta y vuelve a autenticarte.")
+        }
+    }
     @Synchronized fun confirm(attemptId: String, authenticationConfirmed: Boolean) {
+        refreshAuthenticationExpiry()
         val current = mutable.value
         val attempt = current.attempt ?: return
         if (!current.ready || current.busy || attempt.id != attemptId || attempt.phase != BankPhase.AUTH_RESPONSE || !authenticationConfirmed) return
-        if (clock() - attempt.at !in 0..300_000L) {
-            mutable.value = current.copy(attempt = attempt.copy(phase = BankPhase.AUTH_REQUIRED), error = "La revisión venció. Inicia una nueva autenticación."); return
-        }
         val sending = attempt.copy(phase = BankPhase.SENDING)
         mutable.value = current.copy(busy = true, attempt = sending, response = null, error = null)
         worker.execute {

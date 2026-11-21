@@ -26,6 +26,9 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.SecureFlagPolicy
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.repeatOnLifecycle
+import kotlinx.coroutines.delay
 import com.simple.mobile.SimpleApplication
 import com.simple.mobile.domain.recharge.*
 import com.simple.mobile.presentation.DashboardState
@@ -53,8 +56,25 @@ import com.simple.mobile.presentation.FlowProgress
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer); pin = "" }
     }
+    LaunchedEffect(controller, lifecycleOwner, attempt?.id, attempt?.phase) {
+        if (attempt?.phase == BankPhase.AUTH_RESPONSE) {
+            lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                while (true) {
+                    controller.refreshAuthenticationExpiry()
+                    delay(1000)
+                }
+            }
+        }
+    }
     var authConfirmed by remember(attempt?.id) { mutableStateOf(false) }
     var outcomeReviewed by remember(attempt?.id) { mutableStateOf(false) }
+    val newRecharge: () -> Unit = {
+        initialSub = subscription
+        pin = ""
+        authConfirmed = false
+        formStep = 0
+        controller.acknowledge()
+    }
     val eligible = dashboard.lines.any { it.subscription == subscription && it.active && it.cubacel }
     val permitted = dashboard.permission && context.checkSelfPermission(Manifest.permission.CALL_PHONE) == PackageManager.PERMISSION_GRANTED
     val available = eligible && permitted && dashboard.storageReady && !dashboard.busy && !dashboard.managingLine && !dashboard.transferSaving
@@ -95,6 +115,8 @@ import com.simple.mobile.presentation.FlowProgress
                                     val value = pin.toCharArray(); pin = ""; focus.clearFocus()
                                     controller.authenticate(subscription, line, phone.trim(), MetropolitanoProtocol.amount(cup)!!, value)
                                 }, modifier = button, enabled = available && state.ready && MetropolitanoProtocol.phone(phone) != null && MetropolitanoProtocol.amount(cup) != null && MetropolitanoProtocol.validPin(pin.toCharArray())) { Text("Autenticar en Metropolitano") }
+                                attempt.phase == BankPhase.AUTH_REQUIRED -> Button(onClick = newRecharge,
+                                    modifier = button, enabled = state.ready && outcomeReviewed) { Text("Volver a autenticarme") }
                                 attempt.phase == BankPhase.AUTH_RESPONSE -> Button(onClick = { controller.confirm(attempt.id, authConfirmed) },
                                     modifier = button, enabled = available && authConfirmed && state.ready) { Text("Confirmar recarga · ${attempt.cup} CUP") }
                                 else -> OutlinedButton(onClick = onClose, modifier = button) { Text("Volver a mi línea") }
@@ -172,6 +194,8 @@ import com.simple.mobile.presentation.FlowProgress
                                         Text("He recibido la confirmación de autenticación de Metropolitano.", style = MaterialTheme.typography.bodyMedium)
                                     }
                                     Text("La confirmación vence a los 5 minutos.", style = MaterialTheme.typography.bodySmall)
+                                } else if (attempt.phase == BankPhase.AUTH_REQUIRED) {
+                                    Text("Revisa la respuesta y marca la casilla de abajo. Después pulsa Volver a autenticarme para revisar la recarga e introducir de nuevo tu PIN.", style = MaterialTheme.typography.bodySmall)
                                 } else if (debitPhase) {
                                     Text("Confirma la recarga en el SMS. Si el resultado es incierto, no repitas el pago.", style = MaterialTheme.typography.bodySmall)
                                 } else if (!state.busy) {
@@ -182,7 +206,7 @@ import com.simple.mobile.presentation.FlowProgress
                                         Checkbox(outcomeReviewed, { outcomeReviewed = it })
                                         Text(if (debitPhase) "He revisado el resultado antes de iniciar otra recarga." else "He revisado la respuesta y quiero cerrar esta solicitud.", style = MaterialTheme.typography.bodySmall)
                                     }
-                                    TextButton(onClick = { controller.acknowledge(); formStep = 0; pin = ""; authConfirmed = false }, enabled = outcomeReviewed) { Text("Nueva recarga") }
+                                    if (attempt.phase != BankPhase.AUTH_REQUIRED) TextButton(onClick = newRecharge, enabled = outcomeReviewed) { Text("Nueva recarga") }
                                 }
                             }
                         }
