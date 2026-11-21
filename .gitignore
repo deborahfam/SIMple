@@ -27,3 +27,7 @@ __pycache__/
 captures/
 
 .local/
+
+# Pencil exports are local review artifacts; commit the editable design only.
+/design/previews/
+/design/screens.json

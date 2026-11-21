@@ -1,18 +1,33 @@
-# SIMple dashboard design
+# SIMple interface design
 
 Editable Pencil source: [simple-dashboard.pen](simple-dashboard.pen).
 
-- [Light preview](previews/dashboard-light.png)
-- [Dark preview](previews/dashboard-dark.png)
+The document contains 52 light/dark screen artboards (26 screen states) and a reusable purchase review card. Screen states are named in the Pencil layer tree.
 
-Both screens use illustrative balances and recipients; they are design examples, not live SIM data.
-The design was created and checked in Pencil, then implemented in `Dashboard.kt`.
+## Workflow
 
-The home screen keeps one unified balance/resources card, a compact header and SIM selector,
-a row of three quick actions, and inset navigation. Resources retain 48 dp touch targets;
-large text switches actions to a vertical layout. Expanded details, expired-resource labels,
-query progress, alerts and all existing actions remain available.
+The owner requests Pencil design updates for every interface change. Update the affected light/dark artboards alongside the app, inspect local previews and layout bounds. This preference is also recorded in `.cursor/rules/pencil-design.mdc`.
 
-Review checklist: content bounds checked in Pencil; light/dark contrast and spacing reviewed
-from exported previews; Android build and lint required before delivery. Android uses native
-system bars and scrollable content, so its total viewport differs from the full Pencil artboard.
+Navigation order: **Inicio → Historial → Estadísticas → Ajustes**. App destination IDs remain stable; only their visual order changes.
+
+## Coverage
+
+- Home resource grid, quick actions, low-resource notice, and four-tab navigation.
+- Settings: Lines, Permissions & SMS, Privacy & storage, Data management, Updates, and About. Data management belongs within Privacy & storage. Developer credit, GitHub, copyright, and licenses stay in About.
+- Data selection with SIM choice; consistent purchase review; blocked bank operation; restored result and acknowledgement.
+- Voice/SMS selection and bank-menu review; missing-number guidance. The bank SIM is selected in the external Phone app, distinct from the destination line.
+- Recharge bank SIM, destination/amount, review/PIN, authentication, expired authentication, uncertain result.
+- Update download progress/cancel, cancelled download, verification, and recovered cached APK ready to install.
+- History, statistics, transfers, and Play-distribution settings without direct APK updates or SMS import controls.
+
+Artboards show expanded content/state references, not fixed device screenshots. Short states size to content; full Settings shows the scrollable content in one artboard. Android supplies native system bars, scrolling, permission dialogs, device authentication, dialer and installer screens. Platform dialogs are not replacements implemented by SIMple.
+
+All sample phone numbers, balances, and responses are illustrative fixtures. No real PIN or private user data is included. Designs describe the local implementation; they do not imply live carrier payment verification.
+
+## Validation
+
+Pencil content-bound traversal found no clipped nodes. Representative light/dark exports were inspected visually. Both Android variants passed compilation, lint, and the existing 242 unit tests after the navigation reorder. Device interaction testing is separate and remains pending.
+
+## Repository contents
+
+Only the editable `.pen` design is versioned as a design asset. Exported images and the generated screen index remain local and are ignored by Git. Regenerate previews with Pencil when reviewing changes; do not add exported PNG, SVG, or PDF files to commits.

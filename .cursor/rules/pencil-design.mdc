@@ -1,0 +1,14 @@
+---
+description: Keep SIMple interface changes synchronized with its Pencil design
+alwaysApply: true
+---
+
+# Interface design workflow
+
+- For every interface change, design or update the affected screens in `design/simple-dashboard.pen` using Pencil tools. Keep the implementation and editable design synchronized.
+- Read and edit `.pen` documents only through Pencil; use its interactive CLI if the editor connector is unavailable.
+- Include light and dark variants and relevant loading, disabled, error, and restored states. Use synthetic fixture data, never real phone numbers, balances, PINs, or operator responses.
+- Preserve navigation order: Inicio, Historial, Estadísticas, Ajustes. Keep destination identifiers stable when reordering tabs.
+- Maintain the shared review card and five Settings groups. Distinguish the payment SIM from the destination line.
+- Check content bounds and inspect local exported previews. Keep `design/README.md` current. Commit only the editable `.pen` design asset; keep exported images and the generated screen index out of Git.
+- Do not claim device validation from Pencil previews or compilation alone.

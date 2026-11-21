@@ -102,18 +102,18 @@ private val Navy = Color(0xFF35234F)
                     val scrollTabs = LocalDensity.current.fontScale > 1.3f || LocalConfiguration.current.screenWidthDp < 320
                     Row(Modifier.selectableGroup().then(if (scrollTabs) Modifier.horizontalScroll(rememberScrollState()) else Modifier)
                         .padding(horizontal = 4.dp, vertical = 6.dp)) {
-                        listOf("Inicio" to Icons.Outlined.SpaceDashboard, "Historial" to Icons.Outlined.History,
-                            "Ajustes" to Icons.Outlined.Tune, "Estadísticas" to Icons.Outlined.BarChart).forEachIndexed { index, item ->
-                            val active = page == index
+                        listOf(Triple(0, "Inicio", Icons.Outlined.SpaceDashboard), Triple(1, "Historial", Icons.Outlined.History),
+                            Triple(3, "Estadísticas", Icons.Outlined.BarChart), Triple(2, "Ajustes", Icons.Outlined.Tune)).forEach { (destination, label, icon) ->
+                            val active = page == destination
                             Column((if (scrollTabs) Modifier.width((100 * LocalDensity.current.fontScale).dp) else Modifier.weight(1f))
                                 .clip(RoundedCornerShape(12.dp))
-                                .selectable(selected = active, role = Role.Tab, onClick = { page = index })
+                                .selectable(selected = active, role = Role.Tab, onClick = { page = destination })
                                 .heightIn(min = 64.dp).padding(horizontal = 2.dp, vertical = 6.dp),
                                 horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                 Box(Modifier.width(20.dp).height(3.dp).clip(CircleShape)
                                     .background(if (active) Teal else Color.Transparent))
-                                Icon(item.second, null, tint = if (active) Teal else Muted, modifier = Modifier.size(24.dp))
-                                Text(item.first, color = if (active) Teal else Muted, fontSize = 12.sp,
+                                Icon(icon, null, tint = if (active) Teal else Muted, modifier = Modifier.size(24.dp))
+                                Text(label, color = if (active) Teal else Muted, fontSize = 12.sp,
                                     fontWeight = if (active) FontWeight.Bold else FontWeight.Medium,
                                     textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                             }
