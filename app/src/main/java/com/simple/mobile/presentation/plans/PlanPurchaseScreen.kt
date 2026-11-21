@@ -156,7 +156,7 @@ import com.simple.mobile.presentation.DetailDisclosure
                                 Checkbox(checked = acknowledged, onCheckedChange = { acknowledged = it })
                                 Text("He revisado el resultado antes de iniciar otra compra.", style = MaterialTheme.typography.bodySmall)
                             }
-                            TextButton(onClick = { model.purchases.acknowledge(); reviewing = false; selectedId = null }, enabled = acknowledged) { Text("Elegir otro plan") }
+                            TextButton(onClick = { selectedSubscription = subscription; model.purchases.acknowledge(); reviewing = false; selectedId = null }, enabled = acknowledged) { Text("Elegir otro plan") }
                         }
                     } else if (!reviewing) {
                         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {

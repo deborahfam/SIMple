@@ -42,6 +42,9 @@ import com.simple.mobile.presentation.recharge.RechargeLineSelector
     val purchase by model.purchases.state.collectAsStateWithLifecycle()
     // Keep one window alive when switching categories, including restored purchases.
     val showingData = route == "DATA" || purchase.attempt != null
+    LaunchedEffect(purchase.attempt?.id) {
+        if (purchase.attempt != null) route = "DATA"
+    }
     val category = BankPlanCategory.entries.firstOrNull { it.name == route }
     var destination by rememberSaveable { mutableIntStateOf(state.selected) }
     var option by rememberSaveable(route) { mutableStateOf<Int?>(null) }

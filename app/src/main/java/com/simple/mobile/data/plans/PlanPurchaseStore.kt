@@ -12,7 +12,7 @@ import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
-/** Encrypted last purchase intent/outcome; no raw USSD reply, PIN or subscriber identity. */
+/** Last purchase intent and carrier reply, encrypted together with Android Keystore AES-GCM. */
 class PlanPurchaseStore(context: Context, name: String = "plan_purchase") : PlanAttemptStore {
     private val prefs = context.getSharedPreferences(name, Context.MODE_PRIVATE)
     private val aad = name.toByteArray()
@@ -27,6 +27,7 @@ class PlanPurchaseStore(context: Context, name: String = "plan_purchase") : Plan
     @Synchronized override fun save(attempt: PlanAttempt) {
         val json = JSONObject().put("id", attempt.id).put("sub", attempt.subscription).put("plan", attempt.planId)
             .put("at", attempt.at).put("phase", attempt.phase.name)
+        if (attempt.phase == PurchasePhase.RESPONSE) attempt.response?.let { json.put("response", it) }
         val cipher = Cipher.getInstance("AES/GCM/NoPadding").apply { init(Cipher.ENCRYPT_MODE, key()); updateAAD(aad) }
         val plain = json.toString().toByteArray()
         val data = try { cipher.doFinal(plain) } finally { plain.fill(0) }
@@ -41,7 +42,8 @@ class PlanPurchaseStore(context: Context, name: String = "plan_purchase") : Plan
         val plain = cipher.doFinal(Base64.decode(data, Base64.NO_WRAP))
         val j = try { JSONObject(String(plain)) } finally { plain.fill(0) }
         return PlanAttempt(j.getString("id"), j.getString("plan"), j.getInt("sub"),
-            j.getLong("at"), PurchasePhase.valueOf(j.getString("phase")))
+            j.getLong("at"), PurchasePhase.valueOf(j.getString("phase")),
+            if (j.getString("phase") == PurchasePhase.RESPONSE.name && !j.isNull("response")) j.getString("response") else null)
     }
     @Synchronized override fun clear() { check(prefs.edit().clear().commit()) }
 }

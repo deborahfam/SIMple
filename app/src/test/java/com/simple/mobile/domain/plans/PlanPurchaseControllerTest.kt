@@ -77,4 +77,26 @@ class PlanPurchaseControllerTest {
         controller.clearForLine(7)
         assertNull(controller.state.value.attempt)
     }
+    @Test fun completedReplySurvivesRestartWithoutResendingAndIsClearedOnAcknowledgement() {
+        val store = MemoryStore()
+        val first = PlanPurchaseController(store, worker) { _, _ -> CompletableFuture.completedFuture("Plan activado. Saldo: 20 CUP") }
+        first.confirm("combo_2gb", 7)
+        var sends = 0
+        val reopened = PlanPurchaseController(store, worker) { _, _ -> sends++; CompletableFuture.completedFuture("unexpected") }
+        assertEquals("Plan activado. Saldo: 20 CUP", reopened.state.value.response)
+        assertEquals(7, reopened.state.value.attempt?.subscription)
+        reopened.confirm("combo_2gb", 8)
+        assertEquals(0, sends)
+        reopened.acknowledge()
+        assertNull(store.attempt)
+        assertNull(reopened.state.value.response)
+    }
+    @Test fun oldOutcomeWithoutReplyStillLoadsAndDoesNotInventAResponse() {
+        val store = MemoryStore().apply { attempt = PlanAttempt("old", "combo_2gb", 7, 10, PurchasePhase.RESPONSE) }
+        val controller = PlanPurchaseController(store, worker) { _, _ -> error("Must not resend") }
+        assertTrue(controller.state.value.ready)
+        assertEquals(PurchasePhase.RESPONSE, controller.state.value.attempt?.phase)
+        assertNull(controller.state.value.response)
+    }
+
 }

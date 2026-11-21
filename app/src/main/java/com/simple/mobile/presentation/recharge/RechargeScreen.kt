@@ -1,5 +1,6 @@
 package com.simple.mobile.presentation.recharge
 
+import androidx.activity.compose.BackHandler
 import android.Manifest
 import android.content.pm.PackageManager
 import androidx.compose.foundation.layout.*
@@ -61,15 +62,20 @@ import com.simple.mobile.presentation.FlowProgress
     val step = if (debitPhase) 3 else if (attempt != null) 2 else formStep
     var customAmount by rememberSaveable { mutableStateOf(false) }
     val scroll = rememberScrollState()
-    Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false,
+    val back: () -> Unit = {
+        pin = ""
+        if (attempt == null && formStep > 0 && !state.busy) formStep-- else onClose()
+    }
+    Dialog(onDismissRequest = back, properties = DialogProperties(usePlatformDefaultWidth = false,
         decorFitsSystemWindows = false, securePolicy = SecureFlagPolicy.SecureOn)) {
+        BackHandler(onBack = back)
         val focus = LocalFocusManager.current
         LaunchedEffect(step, attempt?.phase) { scroll.scrollTo(0); focus.clearFocus() }
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
             Scaffold(Modifier.fillMaxSize().safeDrawingPadding().imePadding(), contentWindowInsets = WindowInsets(0, 0, 0, 0),
                 topBar = {
                     Row(Modifier.fillMaxWidth().padding(start = 12.dp, end = 8.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        if (attempt == null && formStep > 0) IconButton(onClick = { pin = ""; formStep-- }, enabled = !state.busy) {
+                        if (attempt == null && formStep > 0) IconButton(onClick = back, enabled = !state.busy) {
                             Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Volver al paso anterior")
                         }
                         Text("Recargar", modifier = Modifier.weight(1f).padding(start = 8.dp).semantics { heading() }, style = MaterialTheme.typography.titleLarge)

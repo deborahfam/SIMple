@@ -7,7 +7,8 @@ import java.util.concurrent.CompletableFuture
 import java.util.concurrent.Executor
 
 enum class PurchasePhase { SENDING, RESPONSE, UNKNOWN, NOT_SENT }
-data class PlanAttempt(val id: String, val planId: String, val subscription: Int, val at: Long, val phase: PurchasePhase)
+data class PlanAttempt(val id: String, val planId: String, val subscription: Int, val at: Long, val phase: PurchasePhase,
+    val response: String? = null)
 data class PlanPurchaseState(val ready: Boolean = false, val busy: Boolean = false, val attempt: PlanAttempt? = null,
     val response: String? = null, val error: String? = null)
 interface PlanAttemptStore {
@@ -25,7 +26,8 @@ class PlanPurchaseController(private val store: PlanAttemptStore, private val wo
     init { worker.execute {
         try {
             val previous = store.load()?.let { if (it.phase == PurchasePhase.SENDING) it.copy(phase = PurchasePhase.UNKNOWN) else it }
-            mutable.value = PlanPurchaseState(ready = true, attempt = previous)
+            mutable.value = PlanPurchaseState(ready = true, attempt = previous,
+                response = previous?.response?.takeIf { previous.phase == PurchasePhase.RESPONSE })
         } catch (_: Exception) { mutable.value = PlanPurchaseState(error = "No se pudo abrir el registro de compra. Cierra y vuelve a abrir SIMple.") }
     } }
     @Synchronized fun confirm(planId: String, subscription: Int) {
@@ -55,9 +57,10 @@ class PlanPurchaseController(private val store: PlanAttemptStore, private val wo
     }
     private fun finish(attempt: PlanAttempt, response: String?) {
         var error: String? = null
-        try { store.save(attempt) }
+        val outcome = attempt.copy(response = response)
+        try { store.save(outcome) }
         catch (_: Exception) { error = "No se pudo guardar el resultado. No repitas la compra sin revisar tus recursos." }
-        mutable.value = PlanPurchaseState(ready = true, attempt = attempt, response = response, error = error)
+        mutable.value = PlanPurchaseState(ready = true, attempt = outcome, response = response, error = error)
     }
     @Synchronized fun acknowledge() {
         if (!mutable.value.ready || mutable.value.busy) return

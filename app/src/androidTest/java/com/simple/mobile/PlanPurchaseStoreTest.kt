@@ -39,4 +39,23 @@ class PlanPurchaseStoreTest {
             assertThrows(Exception::class.java) { store.load() }
         } finally { store.clear() }
     }
+    @Test fun carrierReplySurvivesEncryptedReopenAndIsRemovedWithAttempt() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val name = "test_plan_reply"
+        val store = PlanPurchaseStore(context, name)
+        store.clear()
+        try {
+            val attempt = PlanAttempt("reply-id", "combo_2gb", 7, 10, PurchasePhase.RESPONSE,
+                "Respuesta privada de Cubacel: saldo 20 CUP")
+            store.save(attempt)
+            assertEquals(attempt, PlanPurchaseStore(context, name).load())
+            val values = context.getSharedPreferences(name, Context.MODE_PRIVATE).all.toString()
+            assertFalse(values.contains("Respuesta privada"))
+            assertFalse(values.contains("saldo 20 CUP"))
+            assertEquals(setOf("iv", "data"), context.getSharedPreferences(name, Context.MODE_PRIVATE).all.keys)
+            store.clear()
+            assertNull(PlanPurchaseStore(context, name).load())
+        } finally { store.clear() }
+    }
+
 }
