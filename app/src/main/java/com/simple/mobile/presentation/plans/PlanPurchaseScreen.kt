@@ -38,6 +38,7 @@ import com.simple.mobile.presentation.DetailDisclosure
 @Composable internal fun PlanPurchaseContent(state: DashboardState, model: DashboardViewModel, onClose: () -> Unit,
     onPermissions: () -> Unit, onRefresh: () -> Unit, onCategories: (() -> Unit)? = null) {
     val purchase by model.purchases.state.collectAsStateWithLifecycle()
+    val bankRecharge by model.bankRecharges.state.collectAsStateWithLifecycle()
     var selectedSubscription by rememberSaveable { mutableIntStateOf(state.selected) }
     var selectedId by rememberSaveable { mutableStateOf<String?>(null) }
     var reviewing by rememberSaveable { mutableStateOf(false) }
@@ -58,7 +59,7 @@ import com.simple.mobile.presentation.DetailDisclosure
     val eligible = state.lines.any { it.subscription == subscription && it.active && it.cubacel }
     val context = LocalContext.current
     val permitted = context.checkSelfPermission(Manifest.permission.CALL_PHONE) == PackageManager.PERMISSION_GRANTED && state.permission
-    val available = eligible && permitted && state.storageReady && !state.busy && !state.managingLine && !state.transferSaving
+    val available = eligible && permitted && state.storageReady && !state.busy && !state.managingLine && !state.transferSaving && !bankRecharge.busy
     val scroll = rememberScrollState()
     val step = if (attempt != null) 2 else if (reviewing) 1 else 0
     LaunchedEffect(step) { scroll.scrollTo(0) }
@@ -126,6 +127,7 @@ import com.simple.mobile.presentation.DetailDisclosure
                     purchase.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                     if (!purchase.ready && purchase.error == null) LinearProgressIndicator(Modifier.fillMaxWidth())
                     if (!eligible && attempt == null) Text("Selecciona una SIM Cubacel activa para comprar.", color = MaterialTheme.colorScheme.error)
+                    if (bankRecharge.busy && attempt == null) Text("Espera a que termine la operación bancaria en curso.")
                     if (state.busy && attempt == null) Text("Espera a que termine la consulta en curso.")
                     if (!state.storageReady && attempt == null) Text("Reintenta el almacenamiento desde Ajustes antes de comprar.", color = MaterialTheme.colorScheme.error)
                     if (attempt != null) {

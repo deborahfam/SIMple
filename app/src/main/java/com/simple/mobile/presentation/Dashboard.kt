@@ -515,7 +515,18 @@ private val Navy = Color(0xFF35234F)
                                 }
                                 Text("Opcional: consulta GitHub como máximo una vez al día al abrir la app. No descarga ni instala automáticamente.", fontSize = 13.sp)
                                 Text(update.message, fontSize = 13.sp)
-                                if (update.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+                                if (update.busy) {
+                                    val total = update.totalBytes
+                                    if (update.downloading && total != null && total > 0) {
+                                        val progress = (update.downloadedBytes.toFloat() / total).coerceIn(0f, 1f)
+                                        LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
+                                        Text("${(progress * 100).toInt()}% · ${update.downloadedBytes / 1024} / ${total / 1024} KB", fontSize = 13.sp)
+                                    } else {
+                                        LinearProgressIndicator(Modifier.fillMaxWidth())
+                                        if (update.downloading) Text("${update.downloadedBytes / 1024} KB descargados", fontSize = 13.sp)
+                                    }
+                                }
+                                if (update.downloading) TextButton(onClick = { updates.cancelDownload() }) { Text("Cancelar descarga") }
                                 OutlinedButton(onClick = { updates.check() }, enabled = !update.busy) { Text("Buscar actualización") }
                                 if (update.release != null && !update.ready) Button(onClick = { updates.download() }, enabled = !update.busy) { Text("Descargar actualización") }
                                 if (update.ready) Button(onClick = onInstallUpdate, enabled = !update.busy) { Text("Instalar actualización") }

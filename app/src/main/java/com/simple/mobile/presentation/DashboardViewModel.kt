@@ -220,6 +220,7 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
             }
         }
     }
+    val bankRecharges get() = app.bankRecharges
     val purchases get() = app.purchases
     fun purchasePlan(planId: String, subscription: Int) {
         val current = mutable.value
